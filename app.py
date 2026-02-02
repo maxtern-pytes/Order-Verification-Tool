@@ -254,7 +254,7 @@ def save_order(order):
     conn.commit()
     conn.close()
 
-def get_orders(status_filter, start_date=None, end_date=None, search_query=None):
+def get_orders(status_filter='Pending', start_date=None, end_date=None, search_query=None, payment_filter=None, delivery_filter=None, state_filter=None):
     conn = get_db_connection()
     query = 'SELECT * FROM orders WHERE status = %s'
     params = [status_filter]
@@ -270,6 +270,19 @@ def get_orders(status_filter, start_date=None, end_date=None, search_query=None)
         query += ' AND (id LIKE %s OR customer_name LIKE %s OR phone LIKE %s)'
         wildcard = f"%{search_query}%"
         params.extend([wildcard, wildcard, wildcard])
+    
+    # New filters
+    if payment_filter:
+        query += ' AND payment_method = %s'
+        params.append(payment_filter)
+    
+    if delivery_filter:
+        query += ' AND delivery_type = %s'
+        params.append(delivery_filter)
+    
+    if state_filter:
+        query += ' AND state = %s'
+        params.append(state_filter)
     
     query += ' ORDER BY timestamp DESC'
     c = conn.cursor()
@@ -316,8 +329,11 @@ def dashboard():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     search = request.args.get('search')
+    payment = request.args.get('payment')
+    delivery = request.args.get('delivery')
+    state = request.args.get('state')
     try:
-        orders = get_orders('Pending', start_date, end_date, search)
+        orders = get_orders('Pending', start_date, end_date, search, payment, delivery, state)
     except Exception as e:
         return f"Database Error: {e}. Did you set DATABASE_URL in .env?", 500
     return render_template('dashboard.html', orders=orders, view='Pending', start_date=start_date, end_date=end_date, search=search)
@@ -328,7 +344,10 @@ def call_again_page():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     search = request.args.get('search')
-    orders = get_orders('Call Again', start_date, end_date, search)
+    payment = request.args.get('payment')
+    delivery = request.args.get('delivery')
+    state = request.args.get('state')
+    orders = get_orders('Call Again', start_date, end_date, search, payment, delivery, state)
     return render_template('dashboard.html', orders=orders, view='Call Again', start_date=start_date, end_date=end_date, search=search)
 
 @app.route('/reports')
@@ -355,7 +374,10 @@ def confirmed_page():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     search = request.args.get('search')
-    orders = get_orders('Confirmed', start_date, end_date, search)
+    payment = request.args.get('payment')
+    delivery = request.args.get('delivery')
+    state = request.args.get('state')
+    orders = get_orders('Confirmed', start_date, end_date, search, payment, delivery, state)
     return render_template('dashboard.html', orders=orders, view='Confirmed', start_date=start_date, end_date=end_date, search=search)
 
 @app.route('/cancelled')
@@ -364,7 +386,10 @@ def cancelled_page():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     search = request.args.get('search')
-    orders = get_orders('Cancelled', start_date, end_date, search)
+    payment = request.args.get('payment')
+    delivery = request.args.get('delivery')
+    state = request.args.get('state')
+    orders = get_orders('Cancelled', start_date, end_date, search, payment, delivery, state)
     return render_template('dashboard.html', orders=orders, view='Cancelled', start_date=start_date, end_date=end_date, search=search)
 
 @app.route('/viewer')

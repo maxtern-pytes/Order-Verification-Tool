@@ -46,6 +46,24 @@
             window.location.href = url.toString();
         }
 
+        function applyFilters() {
+            sessionStorage.setItem('scrollPos', window.scrollY);
+            const start = document.getElementById('start_date').value;
+            const end = document.getElementById('end_date').value;
+            const payment = document.getElementById('payment_filter').value;
+            const delivery = document.getElementById('delivery_filter').value;
+            const state = document.getElementById('state_filter').value;
+
+            const url = new URL(window.location.href);
+            if (start) url.searchParams.set('start_date', start); else url.searchParams.delete('start_date');
+            if (end) url.searchParams.set('end_date', end); else url.searchParams.delete('end_date');
+            if (payment) url.searchParams.set('payment', payment); else url.searchParams.delete('payment');
+            if (delivery) url.searchParams.set('delivery', delivery); else url.searchParams.delete('delivery');
+            if (state) url.searchParams.set('state', state); else url.searchParams.delete('state');
+
+            window.location.href = url.toString();
+        }
+
         function performSearch(event) {
             if (event.key === 'Enter') {
                 sessionStorage.setItem('scrollPos', window.scrollY);
@@ -103,6 +121,64 @@
 
     <div class="max-w-7xl mx-auto p-6">
         <!-- Header -->
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-gray-900">Order Verification</h1>
+                <p class="text-sm text-gray-500 mt-1">Manage and track your orders</p>
+            </div>
+            <div class="flex flex-col md:flex-row gap-3">
+                <!-- Date Filters -->
+                <input type="date" id="start_date" value="{{ start_date or '' }}"
+                    class="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <input type="date" id="end_date" value="{{ end_date or '' }}"
+                    class="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+
+                <!-- Payment Method Filter -->
+                <select id="payment_filter"
+                    class="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <option value="">All Payments</option>
+                    <option value="Prepaid" {% if request.args.get('payment')=='Prepaid' %}selected{% endif %}>Prepaid
+                    </option>
+                    <option value="COD" {% if request.args.get('payment')=='COD' %}selected{% endif %}>COD</option>
+                </select>
+
+                <!-- Delivery Type Filter -->
+                <select id="delivery_filter"
+                    class="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <option value="">All Delivery</option>
+                    <option value="Standard" {% if request.args.get('delivery')=='Standard' %}selected{% endif %}>
+                        Standard</option>
+                    <option value="Express" {% if request.args.get('delivery')=='Express' %}selected{% endif %}>Express
+                    </option>
+                </select>
+
+                <!-- State Filter -->
+                <select id="state_filter"
+                    class="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <option value="">All States</option>
+                    <option value="Maharashtra" {% if request.args.get('state')=='Maharashtra' %}selected{% endif %}>
+                        Maharashtra</option>
+                    <option value="Karnataka" {% if request.args.get('state')=='Karnataka' %}selected{% endif %}>
+                        Karnataka</option>
+                    <option value="Delhi" {% if request.args.get('state')=='Delhi' %}selected{% endif %}>Delhi</option>
+                    <option value="Tamil Nadu" {% if request.args.get('state')=='Tamil Nadu' %}selected{% endif %}>Tamil
+                        Nadu</option>
+                    <option value="Gujarat" {% if request.args.get('state')=='Gujarat' %}selected{% endif %}>Gujarat
+                    </option>
+                    <option value="Uttar Pradesh" {% if request.args.get('state')=='Uttar Pradesh' %}selected{% endif
+                        %}>Uttar Pradesh</option>
+                    <option value="West Bengal" {% if request.args.get('state')=='West Bengal' %}selected{% endif %}>
+                        West Bengal</option>
+                    <option value="Rajasthan" {% if request.args.get('state')=='Rajasthan' %}selected{% endif %}>
+                        Rajasthan</option>
+                </select>
+
+                <button onclick="applyFilters()"
+                    class="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                    Apply Filters
+                </button>
+            </div>
+        </div>
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900">Order Verification</h1>
@@ -323,12 +399,27 @@
                         <p class="text-sm text-gray-700">{{ order.notes }}</p>
                     </div>
                     {% endif %}
-                    <div class="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
-                        <span class="font-mono text-blue-900 font-medium">{{ order.phone }}</span>
-                        <a href="tel:{{ order.phone }}"
-                            class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2">
-                            Call
-                        </a>
+                    <div class="flex items-center justify-between bg-blue-50 p-3 rounded-lg gap-2">
+                        <span class="font-mono text-blue-900 font-medium text-sm">{{ order.phone }}</span>
+                        <div class="flex gap-2">
+                            <a href="https://wa.me/{{ order.phone.replace('+', '').replace(' ', '') }}?text={{ 'Hello ' + order.customer_name + '! 👋%0A%0AYour order *' + order.id + '* is ready for confirmation.%0A%0A📦 *Order Details:*%0A' + (order.products | replace('[', '') | replace(']', '') | replace('\"', '') | urlencode) + '
+                                %0A%0A💰 Total: ₹' + order.total + '%0A🚚 Delivery: ' + (order.delivery_type
+                                or 'Standard' ) + '%0A💳 Payment: ' + (order.payment_method or 'COD' )
+                                + '%0A%0A📍 Delivery Address:%0A' + (order.address | urlencode)
+                                + '%0A%0APlease reply:%0A✅ *CONFIRM* to proceed%0A❌ *CANCEL* to cancel%0A%0AThank you!'
+                                }}" target="_blank"
+                                class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                    <path
+                                        d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                                </svg>
+                                WhatsApp
+                            </a>
+                            <a href="tel:{{ order.phone }}"
+                                class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-sm font-medium transition-colors">
+                                Call
+                            </a>
+                        </div>
                     </div>
                 </div>
 
