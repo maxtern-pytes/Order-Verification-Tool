@@ -267,9 +267,16 @@ def get_orders(status_filter='Pending', start_date=None, end_date=None, search_q
         params.append(end_date + " 23:59:59")
     
     if search_query:
-        query += ' AND (id ILIKE %s OR customer_name ILIKE %s OR phone ILIKE %s OR email ILIKE %s OR address ILIKE %s)'
-        wildcard = f"%{search_query}%"
-        params.extend([wildcard, wildcard, wildcard, wildcard, wildcard])
+        # Smart search: if 5 or fewer digits, search only Order ID
+        # Otherwise search phone, name, email, address
+        if search_query.isdigit() and len(search_query) <= 5:
+            query += ' AND id ILIKE %s'
+            wildcard = f"%{search_query}%"
+            params.append(wildcard)
+        else:
+            query += ' AND (customer_name ILIKE %s OR phone ILIKE %s OR email ILIKE %s OR address ILIKE %s)'
+            wildcard = f"%{search_query}%"
+            params.extend([wildcard, wildcard, wildcard, wildcard])
     
     # New filters
     if payment_filter:
