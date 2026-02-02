@@ -1,0 +1,9 @@
+flask
+gunicorn
+openpyxl
+fpdf
+Flask-BasicAuth
+psycopg2-binary
+python-dotenv
+requests
+pytz

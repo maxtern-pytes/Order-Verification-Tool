@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Verification</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+    <script>
+        function updateFilters() {
+            const start = document.getElementById('start_date').value;
+            const end = document.getElementById('end_date').value;
+            const url = new URL(window.location.href);
+            if (start) url.searchParams.set('start_date', start); else url.searchParams.delete('start_date');
+            if (end) url.searchParams.set('end_date', end); else url.searchParams.delete('end_date');
+            window.location.href = url.toString();
+        }
+
+        function performSearch(event) {
+            if (event.key === 'Enter') {
+                const query = event.target.value;
+                const url = new URL(window.location.href);
+                if (query) url.searchParams.set('search', query); else url.searchParams.delete('search');
+                window.location.href = url.toString();
+            }
+        }
+
+        function getExportUrl(format, delivery_type) {
+            const start = document.getElementById('start_date').value;
+            const end = document.getElementById('end_date').value;
+            let url = "/export/" + format;
+            const params = [];
+            if (start) params.push("start_date=" + start);
+            if (end) params.push("end_date=" + end);
+
+            // Pass generic view status if we are on a specific view
+            const currentView = '{{ view }}';
+            if (currentView === 'Confirmed' || currentView === 'Pending' || currentView === 'Call Again') {
+                params.push("status=" + currentView);
+            }
+
+            if (delivery_type) {
+                params.push("delivery_type=" + delivery_type);
+            }
+
+            if (params.length > 0) url += "?" + params.join("&");
+            return url;
+        }
+
+        function openEditModal(id, phone, address, products, notes, delivery) {
+            document.getElementById('edit_modal').classList.remove('hidden');
+            document.getElementById('edit_order_id').value = id;
+            document.getElementById('edit_form').action = "/update_order_details/" + id;
+            document.getElementById('edit_phone').value = phone;
+            document.getElementById('edit_address').value = address;
+            document.getElementById('edit_notes').value = notes;
+            document.getElementById('edit_delivery').value = delivery || 'Standard';
+            try {
+                const pList = JSON.parse(products);
+                document.getElementById('edit_products').value = pList.join(', ');
+            } catch (e) {
+                document.getElementById('edit_products').value = products;
+            }
+        }
+        function closeEditModal() {
+            document.getElementById('edit_modal').classList.add('hidden');
+        }
+    </script>
+</head>
+
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+
+    <div class="max-w-7xl mx-auto p-6">
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Order Verification</h1>
+                <p class="text-gray-500">Manage customer confirmations</p>
+            </div>
+
+            <div class="flex flex-col md:flex-row gap-3 items-end md:items-center w-full md:w-auto">
+                {% if view != 'Reports' %}
+                <!-- Search Bar -->
+                <div class="relative w-full md:w-64">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                    </div>
+                    <input type="text" value="{{ search or '' }}" onkeydown="performSearch(event)"
+                        placeholder="Search Name/Phone..."
+                        class="pl-10 w-full text-sm border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 shadow-sm p-2 outline-none">
+                </div>
+
+                <!-- Date Filter -->
+                <div class="flex items-center gap-2 bg-white p-2 border rounded shadow-sm">
+                    <span class="text-xs font-semibold text-gray-500 uppercase">Filter Date:</span>
+                    <input type="date" id="start_date" value="{{ start_date or '' }}" onchange="updateFilters()"
+                        class="text-sm border-gray-300 rounded focus:ring-blue-500 outline-none">
+                    <span class="text-gray-400">-</span>
+                    <input type="date" id="end_date" value="{{ end_date or '' }}" onchange="updateFilters()"
+                        class="text-sm border-gray-300 rounded focus:ring-blue-500 outline-none">
+                </div>
+                {% endif %}
+
+                <a href="/debug/seed" class="text-sm text-gray-500 hover:text-gray-800 underline">Reset</a>
+
+                {% if view != 'Reports' %}
+                <div class="relative group">
+                    <button
+                        class="px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded hover:bg-gray-800 flex items-center gap-2">
+                        Download {{ view }}
+                        <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7">
+                            </path>
+                        </svg>
+                    </button>
+                    <div
+                        class="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg hidden group-hover:block border border-gray-100 z-10">
+                        <div class="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Current View
+                        </div>
+                        <a href="#" onclick="window.location.href=getExportUrl('csv'); return false;"
+                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Export CSV</a>
+                        <a href="#" onclick="window.location.href=getExportUrl('excel'); return false;"
+                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Export Excel</a>
+                        <a href="#" onclick="window.location.href=getExportUrl('pdf'); return false;"
+                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Export PDF</a>
+
+                        <div class="border-t border-gray-100 my-1"></div>
+                        <div class="px-4 py-2 text-xs font-bold text-purple-600 uppercase tracking-wider">⚡ Express Only
+                        </div>
+
+                        <a href="#" onclick="window.location.href=getExportUrl('csv', 'Express'); return false;"
+                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Export CSV (Express)</a>
+                        <a href="#" onclick="window.location.href=getExportUrl('excel', 'Express'); return false;"
+                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Export Excel (Express)</a>
+                        <a href="#" onclick="window.location.href=getExportUrl('pdf', 'Express'); return false;"
+                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Export PDF (Express)</a>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <div class="border-b border-gray-200 mb-6">
+            <nav class="-mb-px flex space-x-8 overflow-x-auto">
+                <a href="/?start_date={{ start_date or '' }}&end_date={{ end_date or '' }}&search={{ search or '' }}"
+                    class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                    {% if view == 'Pending' %} border-indigo-500 text-indigo-600 {% else %} border-transparent text-gray-500 hover:text-gray-700 {% endif %}">
+                    Pending Verification
+                </a>
+                <a href="/call-again?start_date={{ start_date or '' }}&end_date={{ end_date or '' }}&search={{ search or '' }}"
+                    class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                    {% if view == 'Call Again' %} border-yellow-500 text-yellow-600 {% else %} border-transparent text-gray-500 hover:text-gray-700 {% endif %}">
+                    Call Again
+                </a>
+                <a href="/confirmed?start_date={{ start_date or '' }}&end_date={{ end_date or '' }}&search={{ search or '' }}"
+                    class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                    {% if view == 'Confirmed' %} border-green-500 text-green-600 {% else %} border-transparent text-gray-500 hover:text-gray-700 {% endif %}">
+                    Confirmed Orders
+                </a>
+                <a href="/reports"
+                    class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                    {% if view == 'Reports' %} border-blue-500 text-blue-600 {% else %} border-transparent text-gray-500 hover:text-gray-700 {% endif %}">
+                    Daily Reports
+                </a>
+            </nav>
+        </div>
+
+        {% if view == 'Reports' %}
+        <!-- REPORTS VIEW -->
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total
+                            Orders</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Pending</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Confirmed</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Cancelled</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Export Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for day in summary %}
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ day.day }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ day.total }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-yellow-600 font-bold">{{ day.pending }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-bold">{{ day.confirmed }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-bold">{{ day.cancelled }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                            <a href="/export/csv?start_date={{ day.day }}&end_date={{ day.day }}"
+                                class="text-blue-600 hover:text-blue-900 bg-blue-50 px-3 py-1 rounded">CSV</a>
+                            <a href="/export/excel?start_date={{ day.day }}&end_date={{ day.day }}"
+                                class="text-green-600 hover:text-green-900 bg-green-50 px-3 py-1 rounded">Excel</a>
+                            <a href="/export/pdf?start_date={{ day.day }}&end_date={{ day.day }}"
+                                class="text-red-600 hover:text-red-900 bg-red-50 px-3 py-1 rounded">PDF</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-4 text-center text-sm text-gray-500">No orders found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% else %}
+
+        <!-- CARD GRID VIEW (Pending / Call Again / Confirmed) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {% for order in orders %}
+            <div
+                class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
+                <!-- Header -->
+                <div class="p-5 border-b border-gray-50 flex justify-between items-start">
+                    <div>
+                        <div class="flex gap-2 mb-2">
+                            <span
+                                class="inline-block px-2 py-0.5 rounded text-xs font-semibold
+                                {% if order.source == 'Shopify' %} bg-green-100 text-green-700 {% else %} bg-purple-100 text-purple-700 {% endif %}">
+                                {{ order.source }}
+                            </span>
+                            <span
+                                class="inline-block px-2 py-0.5 rounded text-xs font-semibold
+                                {% if order.delivery_type == 'Express' %} bg-purple-100 text-purple-700 border border-purple-200 {% else %} bg-gray-100 text-gray-600 border border-gray-200 {% endif %}">
+                                🚚 {{ order.delivery_type or 'Standard' }}
+                            </span>
+                        </div>
+                        <h3 class="font-bold text-lg">{{ order.customer_name }}</h3>
+                        <p class="text-xs text-gray-500">ID: {{ order.id }}</p>
+                    </div>
+                    <div class="text-right">
+                        <button
+                            onclick="openEditModal('{{ order.id }}', '{{ order.phone }}', '{{ order.address | replace('\n', ' ') | replace('\'', '\\\'') }}', '{{ order.products | tojson | forceescape }}', '{{ order.notes | tojson | forceescape }}', '{{ order.delivery_type or 'Standard' }}')"
+                            class="text-xs font-medium text-blue-600 hover:underline mb-1">
+                            Edit Details
+                        </button>
+                        <p class="font-bold text-gray-900">₹{{ order.total }}</p>
+                        <p class="text-xs text-gray-400 mt-1">{{ order.timestamp }}</p>
+                    </div>
+                </div>
+
+                <!-- Body (Products, Address, Phone, Notes) -->
+                <div class="p-5 space-y-4">
+                    <div>
+                        <p class="text-xs uppercase tracking-wide text-gray-400 mb-1">Products</p>
+                        <ul class="text-sm text-gray-700 font-medium">
+                            {% for item in order.products %}
+                            <li class="truncate">• {{ item }}</li>
+                            {% else %}
+                            <li class="text-gray-400 italic">No products listed</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    <div>
+                        <p class="text-xs uppercase tracking-wide text-gray-400 mb-1">Address</p>
+                        <p class="text-sm text-gray-600 truncate mb-1">{{ order.address or 'No Address Provided' }}</p>
+                        {% if order.state %}
+                        <span
+                            class="inline-block px-2 py-0.5 rounded text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-200">
+                            {{ order.state }}
+                        </span>
+                        {% endif %}
+                    </div>
+                    {% if order.notes %}
+                    <div class="bg-yellow-50 p-2 rounded border border-yellow-100">
+                        <p class="text-xs uppercase tracking-wide text-yellow-600 mb-1 font-bold">📝 Agent Notes</p>
+                        <p class="text-sm text-gray-700">{{ order.notes }}</p>
+                    </div>
+                    {% endif %}
+                    <div class="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
+                        <span class="font-mono text-blue-900 font-medium">{{ order.phone }}</span>
+                        <a href="tel:{{ order.phone }}"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2">
+                            Call
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Footer (Actions) -->
+                <div class="p-5 pt-0 grid grid-cols-3 gap-2">
+                    {% if view != 'Confirmed' %}
+                    <form action="/update_status/{{ order.id }}/Confirmed" method="POST">
+                        <button type="submit"
+                            class="w-full py-2 rounded-lg text-sm font-medium bg-green-50 text-green-700 hover:bg-green-100 transition-colors border border-green-200">
+                            Confirm
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    {% if view == 'Pending' %}
+                    <form action="/update_status/{{ order.id }}/Call Again" method="POST">
+                        <button type="submit"
+                            class="w-full py-2 rounded-lg text-sm font-medium bg-yellow-50 text-yellow-700 hover:bg-yellow-100 transition-colors border border-yellow-200">
+                            Retry
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    <form action="/update_status/{{ order.id }}/Cancelled" method="POST"
+                        class="{% if view == 'Confirmed' %} col-span-3 {% endif %}">
+                        <button type="submit"
+                            class="w-full py-2 rounded-lg text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100 transition-colors border border-red-200">
+                            Cancel
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% else %}
+            <div class="col-span-full py-20 text-center">
+                <h3 class="text-lg font-medium text-gray-900">No orders found</h3>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Edit Modal (With Notes) -->
+    <div id="edit_modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <h2 class="text-xl font-bold mb-4">Edit Order Details</h2>
+            <form id="edit_form" method="POST">
+                <input type="hidden" id="edit_order_id" name="order_id">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Delivery Type</label>
+                    <div class="relative">
+                        <select id="edit_delivery" name="delivery_type"
+                            class="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-white">
+                            <option value="Standard">Standard Delivery</option>
+                            <option value="Express">⚡ Express Delivery</option>
+                        </select>
+                        <div
+                            class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                            <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Products</label>
+                    <textarea id="edit_products" name="products_text" rows="2"
+                        class="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                    <textarea id="edit_address" name="address" rows="2"
+                        class="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <input type="text" id="edit_phone" name="phone"
+                        class="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+
+                <div class="mb-6 bg-yellow-50 p-3 rounded border border-yellow-200">
+                    <label class="block text-sm font-bold text-yellow-800 mb-1">Agent Notes</label>
+                    <textarea id="edit_notes" name="notes" rows="2" placeholder="e.g. Customer busy, call back at 5PM"
+                        class="w-full border border-yellow-300 rounded p-2 text-sm focus:ring-2 focus:ring-yellow-500 outline-none"></textarea>
+                </div>
+
+                <div class="flex justify-end gap-3">
+                    <button type="button" onclick="closeEditModal()"
+                        class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Save
+                        Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+
+</html>
