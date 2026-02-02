@@ -28,7 +28,15 @@ else:
 app.config['BASIC_AUTH_USERNAME'] = os.getenv("BASIC_AUTH_USERNAME", "admin")
 app.config['BASIC_AUTH_PASSWORD'] = os.getenv("BASIC_AUTH_PASSWORD", "admin123")
 
+# Viewer credentials (read-only access)
+VIEWER_USERNAME = os.getenv("VIEWER_USERNAME", "viewer")
+VIEWER_PASSWORD = os.getenv("VIEWER_PASSWORD", "viewer123")
+
 basic_auth = BasicAuth(app)
+
+# Custom auth check for viewer
+def check_viewer_auth(username, password):
+    return username == VIEWER_USERNAME and password == VIEWER_PASSWORD
 
 # --- Database Setup ---
 def get_db_connection():
@@ -87,6 +95,19 @@ def init_db():
 init_db()
 
 # --- Helper Functions ---
+
+def calculate_rto_risk(payment_method, state):
+    """Calculate RTO risk for Shopify orders based on payment method and state"""
+    # COD orders have higher RTO risk
+    if payment_method == "COD":
+        # High-risk states for COD
+        high_risk_states = ["Bihar", "Jharkhand", "Uttar Pradesh", "West Bengal", "Odisha", "Assam"]
+        if state in high_risk_states:
+            return "HIGH"
+        return "MEDIUM"
+    # Prepaid orders are generally low risk
+    return "LOW"
+
 def normalize_shopify_order(data):
     try:
         products = [f"{item.get('name')} (Qty: {item.get('quantity', 1)})" for item in data.get("line_items", [])]
@@ -107,6 +128,9 @@ def normalize_shopify_order(data):
             gateway_str = str(payment_gateways).lower()
             if "cod" in gateway_str or "cash" in gateway_str:
                 payment_method = "COD"
+        
+        state = shipping.get("province", "")
+        rto_risk = calculate_rto_risk(payment_method, state)
             
         return {
             "id": str(data.get("name", "N/A")),
@@ -114,8 +138,9 @@ def normalize_shopify_order(data):
             "email": data.get('customer', {}).get('email', ''),
             "phone": shipping.get("phone") or data.get("customer", {}).get("phone") or "No Phone",
             "address": address,
-            "state": shipping.get("province", ""),
+            "state": state,
             "payment_method": payment_method,
+            "rto_risk": rto_risk,
             "source": "Shopify",
             "products": json.dumps(products),
             "total": data.get("total_price", "0.00"),
@@ -142,9 +167,29 @@ def normalize_shiprocket_order(data):
             
         delivery_type = "Express" if "Express" in tags_str else "Standard"
         
-        # Payment Method - Shiprocket sends payment_method field
+        # Payment Method - Check multiple possible fields
+        payment_method = "Prepaid"  # Default
+        
+        # Check payment_method field
         payment_raw = str(data.get("payment_method", "")).upper()
-        payment_method = "COD" if "COD" in payment_raw else "Prepaid"
+        if "COD" in payment_raw or "CASH" in payment_raw:
+            payment_method = "COD"
+        
+        # Also check cod field if present
+        if data.get("cod") == 1 or data.get("cod") == "1" or data.get("is_cod"):
+            payment_method = "COD"
+            
+        # Check payment_gateway field
+        payment_gateway = str(data.get("payment_gateway", "")).upper()
+        if "COD" in payment_gateway or "CASH" in payment_gateway:
+            payment_method = "COD"
+        
+        # Extract RTO risk from tags (Shiprocket provides this)
+        rto_risk = "LOW"  # Default
+        if "HIGH RISK" in tags_str.upper() or "HIGH_RISK" in tags_str.upper():
+            rto_risk = "HIGH"
+        elif "MEDIUM RISK" in tags_str.upper() or "MEDIUM_RISK" in tags_str.upper():
+            rto_risk = "MEDIUM"
 
         return {
             "id": str(data.get("channel_order_id") or data.get("order_id", "N/A")),
@@ -154,6 +199,7 @@ def normalize_shiprocket_order(data):
             "address": address,
             "state": data.get("shipping_state", ""),
             "payment_method": payment_method,
+            "rto_risk": rto_risk,
             "source": "Shiprocket",
             "products": json.dumps(products),
             "total": data.get("net_total", "0.00"),
@@ -171,18 +217,19 @@ def save_order(order):
     c = conn.cursor(cursor_factory=RealDictCursor)
     
     # Check for existing data to preserve
-    c.execute('SELECT notes, delivery_type, state, payment_method, email FROM orders WHERE id = %s', (order['id'],))
+    c.execute('SELECT notes, delivery_type, state, payment_method, email, rto_risk FROM orders WHERE id = %s', (order['id'],))
     existing = c.fetchone()
     notes = existing['notes'] if existing and existing.get('notes') else order.get('notes', '')
     delivery_type = existing['delivery_type'] if existing and existing.get('delivery_type') else order.get('delivery_type', 'Standard')
     state = order.get('state') or (existing['state'] if existing else '')
     payment_method = order.get('payment_method') or (existing['payment_method'] if existing else 'Prepaid')
     email = order.get('email') or (existing['email'] if existing else '')
+    rto_risk = order.get('rto_risk') or (existing['rto_risk'] if existing else 'LOW')
 
     # Postgres UPSERT
     query = '''
-        INSERT INTO orders (id, customer_name, email, phone, address, source, products, total, status, timestamp, notes, delivery_type, state, payment_method)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO orders (id, customer_name, email, phone, address, source, products, total, status, timestamp, notes, delivery_type, state, payment_method, rto_risk)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (id) DO UPDATE SET
             customer_name = EXCLUDED.customer_name,
             email = EXCLUDED.email,
@@ -196,12 +243,13 @@ def save_order(order):
             notes = %s,
             delivery_type = %s,
             state = %s,
-            payment_method = %s
+            payment_method = %s,
+            rto_risk = %s
     '''
     c.execute(query, (
         order['id'], order['customer_name'], email, order['phone'], order.get('address', ''), order['source'], 
-        order['products'], order['total'], order['status'], order['timestamp'], notes, delivery_type, state, payment_method,
-        notes, delivery_type, state, payment_method
+        order['products'], order['total'], order['status'], order['timestamp'], notes, delivery_type, state, payment_method, rto_risk,
+        notes, delivery_type, state, payment_method, rto_risk
     ))
     conn.commit()
     conn.close()
@@ -309,6 +357,31 @@ def confirmed_page():
     search = request.args.get('search')
     orders = get_orders('Confirmed', start_date, end_date, search)
     return render_template('dashboard.html', orders=orders, view='Confirmed', start_date=start_date, end_date=end_date, search=search)
+
+@app.route('/cancelled')
+@basic_auth.required
+def cancelled_page():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    search = request.args.get('search')
+    orders = get_orders('Cancelled', start_date, end_date, search)
+    return render_template('dashboard.html', orders=orders, view='Cancelled', start_date=start_date, end_date=end_date, search=search)
+
+@app.route('/viewer')
+def viewer_dashboard():
+    """Read-only dashboard for viewing confirmed orders only"""
+    auth = request.authorization
+    if not auth or not check_viewer_auth(auth.username, auth.password):
+        return Response(
+            'Viewer login required', 401,
+            {'WWW-Authenticate': 'Basic realm="Viewer Login"'}
+        )
+    
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    search = request.args.get('search')
+    orders = get_orders('Confirmed', start_date, end_date, search)
+    return render_template('viewer.html', orders=orders, start_date=start_date, end_date=end_date, search=search)
 
 @app.route('/update_order_details/<order_id>', methods=['POST'])
 @basic_auth.required
@@ -493,8 +566,27 @@ def webhook_shopify():
 
 @app.route('/webhook/shiprocket', methods=['POST'])
 def webhook_shiprocket():
-    order = normalize_shiprocket_order(request.json)
+    payload = request.json
+    print("=" * 80)
+    print("SHIPROCKET WEBHOOK RECEIVED:")
+    print(json.dumps(payload, indent=2))
+    print("=" * 80)
+    
+    # Check payment-related fields
+    payment_fields = {
+        'payment_method': payload.get('payment_method'),
+        'cod': payload.get('cod'),
+        'is_cod': payload.get('is_cod'),
+        'payment_gateway': payload.get('payment_gateway'),
+        'payment_mode': payload.get('payment_mode'),
+    }
+    print("PAYMENT FIELDS FOUND:")
+    print(json.dumps(payment_fields, indent=2))
+    print("=" * 80)
+    
+    order = normalize_shiprocket_order(payload)
     if order:
+        print(f"NORMALIZED ORDER - Payment Method: {order.get('payment_method')}")
         save_order(order)
     return jsonify({"status": "received"}), 200
 
@@ -508,6 +600,7 @@ def seed_data():
         "address": "123, MG Road, Bangalore",
         "state": "Karnataka",
         "payment_method": "Prepaid",
+        "rto_risk": "LOW",
         "source": "Shopify", "products": json.dumps(["Blue Shirt - M"]), "total": "1299.00",
         "status": "Pending", "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "notes": "Called once, busy.",
@@ -519,6 +612,7 @@ def seed_data():
         "address": "Green Apts, Mumbai",
         "state": "Maharashtra",
         "payment_method": "COD",
+        "rto_risk": "MEDIUM",
         "source": "Shiprocket", "products": json.dumps(["Wireless Earbuds"]), "total": "2499.00",
         "status": "Call Again", "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "notes": "",
