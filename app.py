@@ -41,25 +41,30 @@ def init_db():
     try:
         conn = get_db_connection()
         c = conn.cursor()
-        # Postgres Table Creation
-        c.execute('''CREATE TABLE IF NOT EXISTS orders (
-            id TEXT PRIMARY KEY,
-            customer_name TEXT,
-            phone TEXT,
-            address TEXT,
-            source TEXT,
-            products TEXT,
-            total TEXT,
-            status TEXT,
-            timestamp TEXT,
-            notes TEXT,
-            delivery_type TEXT
-        )''')
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS orders (
+                id TEXT PRIMARY KEY,
+                customer_name TEXT,
+                email TEXT,
+                phone TEXT,
+                address TEXT,
+                source TEXT,
+                products TEXT,  -- JSON string
+                total TEXT,
+                status TEXT,
+                timestamp TEXT,
+                notes TEXT,
+                delivery_type TEXT,
+                state TEXT,
+                payment_method TEXT
+            )
+        ''')
         
-        # Migrations: Check and Add Columns
+        # Migrations
         c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='orders'")
-        existing_columns = [row['column_name'] for row in c.fetchall()]
+        existing_columns = [row[0] for row in c.fetchall()]
         
+        # Ensure all columns are present, adding if missing
         if 'address' not in existing_columns:
             c.execute("ALTER TABLE orders ADD COLUMN address TEXT")
         if 'notes' not in existing_columns:
@@ -68,6 +73,10 @@ def init_db():
             c.execute("ALTER TABLE orders ADD COLUMN delivery_type TEXT DEFAULT 'Standard'")
         if 'state' not in existing_columns:
             c.execute("ALTER TABLE orders ADD COLUMN state TEXT")
+        if 'payment_method' not in existing_columns:
+            c.execute("ALTER TABLE orders ADD COLUMN payment_method TEXT DEFAULT 'Prepaid'")
+        if 'email' not in existing_columns:
+            c.execute("ALTER TABLE orders ADD COLUMN email TEXT")
 
         conn.commit()
         conn.close()
@@ -86,13 +95,27 @@ def normalize_shopify_order(data):
         delivery_type = "Standard"
         if "Express" in data.get("tags", ""):
             delivery_type = "Express"
+        
+        # Payment Method - check gateway and payment_gateway_names
+        gateway = str(data.get("gateway", "")).lower()
+        payment_gateways = data.get("payment_gateway_names", [])
+        payment_method = "Prepaid"
+        
+        if "cod" in gateway or "cash" in gateway:
+            payment_method = "COD"
+        elif payment_gateways:
+            gateway_str = str(payment_gateways).lower()
+            if "cod" in gateway_str or "cash" in gateway_str:
+                payment_method = "COD"
             
         return {
-            "id": str(data.get("name", "N/A")), # Use Name (e.g., #1001) instead of internal ID
+            "id": str(data.get("name", "N/A")),
             "customer_name": f"{data.get('customer', {}).get('first_name', '')} {data.get('customer', {}).get('last_name', '')}".strip() or "Guest",
+            "email": data.get('customer', {}).get('email', ''),
             "phone": shipping.get("phone") or data.get("customer", {}).get("phone") or "No Phone",
             "address": address,
-            "state": shipping.get("province", ""), # Extract State
+            "state": shipping.get("province", ""),
+            "payment_method": payment_method,
             "source": "Shopify",
             "products": json.dumps(products),
             "total": data.get("total_price", "0.00"),
@@ -112,20 +135,25 @@ def normalize_shiprocket_order(data):
         
         # Check tags for Express
         raw_tags = data.get("tags") or data.get("order_tags") or "" 
-        # Shiprocket sometimes sends list, sometimes string. Handle both.
         if isinstance(raw_tags, list):
             tags_str = ",".join(raw_tags)
         else:
             tags_str = str(raw_tags)
             
         delivery_type = "Express" if "Express" in tags_str else "Standard"
+        
+        # Payment Method - Shiprocket sends payment_method field
+        payment_raw = str(data.get("payment_method", "")).upper()
+        payment_method = "COD" if "COD" in payment_raw else "Prepaid"
 
         return {
-            "id": str(data.get("channel_order_id") or data.get("order_id", "N/A")), # Prefer Channel ID (e.g. #1001)
+            "id": str(data.get("channel_order_id") or data.get("order_id", "N/A")),
             "customer_name": data.get("customer_name", "Guest"),
+            "email": data.get("customer_email", ""),
             "phone": data.get("customer_phone", "No Phone"),
             "address": address,
-            "state": data.get("shipping_state", ""), # Extract State
+            "state": data.get("shipping_state", ""),
+            "payment_method": payment_method,
             "source": "Shiprocket",
             "products": json.dumps(products),
             "total": data.get("net_total", "0.00"),
@@ -140,22 +168,24 @@ def normalize_shiprocket_order(data):
 
 def save_order(order):
     conn = get_db_connection()
-    c = conn.cursor()
+    c = conn.cursor(cursor_factory=RealDictCursor)
     
-    # Check for existing notes/delivery to preserve them
-    c.execute('SELECT notes, delivery_type, state FROM orders WHERE id = %s', (order['id'],))
+    # Check for existing data to preserve
+    c.execute('SELECT notes, delivery_type, state, payment_method, email FROM orders WHERE id = %s', (order['id'],))
     existing = c.fetchone()
     notes = existing['notes'] if existing and existing.get('notes') else order.get('notes', '')
     delivery_type = existing['delivery_type'] if existing and existing.get('delivery_type') else order.get('delivery_type', 'Standard')
-    # Use existing state if new one is empty, otherwise update
     state = order.get('state') or (existing['state'] if existing else '')
+    payment_method = order.get('payment_method') or (existing['payment_method'] if existing else 'Prepaid')
+    email = order.get('email') or (existing['email'] if existing else '')
 
-    # Postgres UPSERT (On Conflict Do Update)
+    # Postgres UPSERT
     query = '''
-        INSERT INTO orders (id, customer_name, phone, address, source, products, total, status, timestamp, notes, delivery_type, state)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO orders (id, customer_name, email, phone, address, source, products, total, status, timestamp, notes, delivery_type, state, payment_method)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (id) DO UPDATE SET
             customer_name = EXCLUDED.customer_name,
+            email = EXCLUDED.email,
             phone = EXCLUDED.phone,
             address = EXCLUDED.address,
             source = EXCLUDED.source,
@@ -165,12 +195,13 @@ def save_order(order):
             timestamp = EXCLUDED.timestamp,
             notes = %s,
             delivery_type = %s,
-            state = %s
+            state = %s,
+            payment_method = %s
     '''
     c.execute(query, (
-        order['id'], order['customer_name'], order['phone'], order.get('address', ''), order['source'], 
-        order['products'], order['total'], order['status'], order['timestamp'], notes, delivery_type, state,
-        notes, delivery_type, state
+        order['id'], order['customer_name'], email, order['phone'], order.get('address', ''), order['source'], 
+        order['products'], order['total'], order['status'], order['timestamp'], notes, delivery_type, state, payment_method,
+        notes, delivery_type, state, payment_method
     ))
     conn.commit()
     conn.close()
@@ -472,19 +503,23 @@ def webhook_shiprocket():
 @basic_auth.required
 def seed_data():
     save_order({
-        "id": "#1001", "customer_name": "Amit Sharma", "phone": "+919876543210", 
+        "id": "#1001", "customer_name": "Amit Sharma", "phone": "+919876543210",
+        "email": "amit.sharma@example.com",
         "address": "123, MG Road, Bangalore",
         "state": "Karnataka",
-        "source": "Shopify", "products": json.dumps(["Blue Shirt - M"]), "total": "1299.00", 
+        "payment_method": "Prepaid",
+        "source": "Shopify", "products": json.dumps(["Blue Shirt - M"]), "total": "1299.00",
         "status": "Pending", "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "notes": "Called once, busy.",
         "delivery_type": "Standard"
     })
     save_order({
-        "id": "#5521", "customer_name": "Priya Singh", "phone": "+919988776655", 
+        "id": "#5521", "customer_name": "Priya Singh", "phone": "+919988776655",
+        "email": "priya.singh@example.com",
         "address": "Green Apts, Mumbai",
         "state": "Maharashtra",
-        "source": "Shiprocket", "products": json.dumps(["Wireless Earbuds"]), "total": "2499.00", 
+        "payment_method": "COD",
+        "source": "Shiprocket", "products": json.dumps(["Wireless Earbuds"]), "total": "2499.00",
         "status": "Call Again", "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "notes": "",
         "delivery_type": "Express"

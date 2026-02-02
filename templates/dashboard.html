@@ -245,6 +245,7 @@
                             </span>
                         </div>
                         <h3 class="font-bold text-lg">{{ order.customer_name }}</h3>
+                        <p class="text-xs text-gray-500">{{ order.email }}</p>
                         <p class="text-xs text-gray-500">ID: {{ order.id }}</p>
                     </div>
                     <div class="text-right">
@@ -303,7 +304,9 @@
                 <!-- Footer (Actions) -->
                 <div class="p-5 pt-0 grid grid-cols-3 gap-2">
                     {% if view != 'Confirmed' %}
-                    <form action="/update_status/{{ order.id }}/Confirmed" method="POST">
+                    <form action="/update_status" method="POST">
+                        <input type="hidden" name="order_id" value="{{ order.id }}">
+                        <input type="hidden" name="status" value="Confirmed">
                         <button type="submit"
                             class="w-full py-2 rounded-lg text-sm font-medium bg-green-50 text-green-700 hover:bg-green-100 transition-colors border border-green-200">
                             Confirm
@@ -312,7 +315,9 @@
                     {% endif %}
 
                     {% if view == 'Pending' %}
-                    <form action="/update_status/{{ order.id }}/Call Again" method="POST">
+                    <form action="/update_status" method="POST">
+                        <input type="hidden" name="order_id" value="{{ order.id }}">
+                        <input type="hidden" name="status" value="Call Again">
                         <button type="submit"
                             class="w-full py-2 rounded-lg text-sm font-medium bg-yellow-50 text-yellow-700 hover:bg-yellow-100 transition-colors border border-yellow-200">
                             Retry
@@ -320,8 +325,10 @@
                     </form>
                     {% endif %}
 
-                    <form action="/update_status/{{ order.id }}/Cancelled" method="POST"
+                    <form action="/update_status" method="POST"
                         class="{% if view == 'Confirmed' %} col-span-3 {% endif %}">
+                        <input type="hidden" name="order_id" value="{{ order.id }}">
+                        <input type="hidden" name="status" value="Cancelled">
                         <button type="submit"
                             class="w-full py-2 rounded-lg text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100 transition-colors border border-red-200">
                             Cancel
