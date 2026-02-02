@@ -402,7 +402,19 @@ def cancelled_page():
 @app.route('/viewer')
 def viewer_dashboard():
     """Read-only dashboard for viewing confirmed orders only"""
+    print("=" * 80)
+    print("VIEWER DASHBOARD ACCESS ATTEMPT")
+    print(f"Expected Username: {VIEWER_USERNAME}")
+    print(f"Expected Password: {VIEWER_PASSWORD}")
+    
     auth = request.authorization
+    if auth:
+        print(f"Received Username: {auth.username}")
+        print(f"Password Match: {auth.password == VIEWER_PASSWORD}")
+    else:
+        print("No authorization header received")
+    print("=" * 80)
+    
     if not auth or not check_viewer_auth(auth.username, auth.password):
         return Response(
             'Viewer login required', 401,
