@@ -258,9 +258,11 @@ def reports_page():
     summary = get_daily_summary()
     return render_template('dashboard.html', orders=[], view='Reports', summary=summary)
 
-@app.route('/update_status/<order_id>/<new_status>', methods=['POST'])
+@app.route('/update_status', methods=['POST'])
 @basic_auth.required
-def update_status(order_id, new_status):
+def update_status():
+    order_id = request.form.get('order_id')
+    new_status = request.form.get('status')
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('UPDATE orders SET status = %s WHERE id = %s', (new_status, order_id))
@@ -337,9 +339,9 @@ def export_csv():
     
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["ID", "Name", "Phone", "Address", "State", "Source", "Products", "Total", "Status", "Timestamp", "Notes", "Delivery"])
+    writer.writerow(["ID", "Name", "Phone", "Address", "State", "Payment", "Source", "Products", "Total", "Status", "Timestamp", "Notes", "Delivery"])
     for row in rows:
-        writer.writerow([row['id'], row['customer_name'], row['phone'], row['address'], row.get('state', ''), row['source'], 
+        writer.writerow([row['id'], row['customer_name'], row['phone'], row['address'], row.get('state', ''), row.get('payment_method', 'Prepaid'), row['source'], 
                          row['products'], row['total'], row['status'], row['timestamp'], row['notes'], row.get('delivery_type', 'Standard')])
     
     label = f"{status}_{delivery_type}" if status or delivery_type else "all"
@@ -358,9 +360,9 @@ def export_excel():
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.append(["ID", "Name", "Phone", "Address", "State", "Source", "Products", "Total", "Status", "Timestamp", "Notes", "Delivery"])
+    ws.append(["ID", "Name", "Phone", "Address", "State", "Payment", "Source", "Products", "Total", "Status", "Timestamp", "Notes", "Delivery"])
     for row in rows:
-        ws.append([row['id'], row['customer_name'], row['phone'], row['address'], row.get('state', ''), row['source'], 
+        ws.append([row['id'], row['customer_name'], row['phone'], row['address'], row.get('state', ''), row.get('payment_method', 'Prepaid'), row['source'], 
                    row['products'], row['total'], row['status'], row['timestamp'], row['notes'], row.get('delivery_type', 'Standard')])
     
     output = io.BytesIO()
@@ -397,10 +399,10 @@ def export_pdf():
     pdf.set_font("Arial", 'B', 10)
     pdf.set_fill_color(240, 240, 240)
     
-    # Columns: ID(25), Name(40), Phone(30), State(30), Status(25), Delivery(25), Total(20), Products(Rest)
+    # Columns: ID(20), Name(35), Phone(25), State(25), Pay(15), Status(20), Del(20), Total(20), Products(Rest)
     cols = [
-        ("ID", 25), ("Name", 40), ("Phone", 30), ("State", 30), 
-        ("Status", 25), ("Delivery", 25), ("Total", 20), ("Products", 80)
+        ("ID", 20), ("Name", 35), ("Phone", 25), ("State", 25), ("Pay", 15),
+        ("Status", 20), ("Del", 20), ("Total", 20), ("Products", 85)
     ]
     
     for header, width in cols:
@@ -421,20 +423,20 @@ def export_pdf():
                 return t[:length] + "..." if len(t) > length else t
 
             products_str = clean(row['products'])
-            # Remove brackets/quotes from simple list string
             products_str = products_str.replace('[', '').replace(']', '').replace('"', '')
 
             # Row Height 8
             h = 8
             
             pdf.cell(cols[0][1], h, clean(row['id']), border=1)
-            pdf.cell(cols[1][1], h, trunc(row['customer_name'], 20), border=1)
+            pdf.cell(cols[1][1], h, trunc(row['customer_name'], 18), border=1)
             pdf.cell(cols[2][1], h, clean(row['phone']), border=1)
-            pdf.cell(cols[3][1], h, trunc(row.get('state', ''), 15), border=1)
-            pdf.cell(cols[4][1], h, clean(row['status']), border=1)
-            pdf.cell(cols[5][1], h, clean(row.get('delivery_type', 'Standard')), border=1)
-            pdf.cell(cols[6][1], h, clean(row['total']), border=1)
-            pdf.cell(cols[7][1], h, trunc(products_str, 45), border=1)
+            pdf.cell(cols[3][1], h, trunc(row.get('state', ''), 12), border=1)
+            pdf.cell(cols[4][1], h, clean(row.get('payment_method', 'Prepaid')), border=1)
+            pdf.cell(cols[5][1], h, clean(row['status']), border=1)
+            pdf.cell(cols[6][1], h, clean(row.get('delivery_type', 'Standard')), border=1)
+            pdf.cell(cols[7][1], h, clean(row['total']), border=1)
+            pdf.cell(cols[8][1], h, trunc(products_str, 45), border=1)
             
             pdf.ln()
             

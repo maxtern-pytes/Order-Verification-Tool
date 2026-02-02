@@ -254,6 +254,11 @@
                             Edit Details
                         </button>
                         <p class="font-bold text-gray-900">₹{{ order.total }}</p>
+                        <span
+                            class="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase mt-1
+                            {% if order.payment_method == 'Prepaid' %} bg-blue-100 text-blue-700 {% else %} bg-gray-200 text-gray-700 {% endif %}">
+                            {{ order.payment_method or 'COD' }}
+                        </span>
                         <p class="text-xs text-gray-400 mt-1">{{ order.timestamp }}</p>
                     </div>
                 </div>
