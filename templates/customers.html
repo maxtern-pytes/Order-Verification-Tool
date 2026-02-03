@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Database</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50">
+    <div class="min-h-screen p-4 md:p-8">
+        <!-- Header -->
+        <header class="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-900">👥 Customer Database</h1>
+                    <p class="text-sm text-gray-500 mt-1">Track customer profiles and order history</p>
+                </div>
+                <a href="/"
+                    class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
+                    ← Back to Dashboard
+                </a>
+            </div>
+        </header>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div class="bg-white rounded-lg shadow-sm p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Total Customers</p>
+                        <p class="text-3xl font-bold text-gray-900 mt-2">{{ stats.total_customers or 0 }}</p>
+                    </div>
+                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <span class="text-2xl">👥</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Repeat Customers</p>
+                        <p class="text-3xl font-bold text-purple-600 mt-2">{{ stats.repeat_customers or 0 }}</p>
+                        <p class="text-xs text-gray-500 mt-1">
+                            {% if stats.total_customers > 0 %}
+                            {{ ((stats.repeat_customers / stats.total_customers) * 100) | round(1) }}% repeat rate
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                        <span class="text-2xl">🔄</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-500">Avg Lifetime Value</p>
+                        <p class="text-3xl font-bold text-green-600 mt-2">₹{{ stats.avg_lifetime_value | round(0) }}</p>
+                    </div>
+                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-between">
+                        <span class="text-2xl">💰</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters & Search -->
+        <div class="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <div class="flex flex-col md:flex-row gap-4">
+                <!-- Search -->
+                <div class="flex-1">
+                    <input type="text" id="search" value="{{ search or '' }}"
+                        placeholder="Search by name, phone, or email..."
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+
+                <!-- Filter -->
+                <select id="filter"
+                    class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="">All Customers</option>
+                    <option value="repeat" {% if filter_type=='repeat' %}selected{% endif %}>Repeat Customers</option>
+                    <option value="vip" {% if filter_type=='vip' %}selected{% endif %}>VIP (>₹10k)</option>
+                    <option value="high_risk" {% if filter_type=='high_risk' %}selected{% endif %}>High Risk</option>
+                    <option value="new" {% if filter_type=='new' %}selected{% endif %}>New Customers</option>
+                </select>
+
+                <!-- Sort -->
+                <select id="sort" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="last_order_date" {% if sort_by=='last_order_date' %}selected{% endif %}>Recent
+                        Activity</option>
+                    <option value="total_orders" {% if sort_by=='total_orders' %}selected{% endif %}>Most Orders
+                    </option>
+                    <option value="total_spent" {% if sort_by=='total_spent' %}selected{% endif %}>Highest Spending
+                    </option>
+                    <option value="name" {% if sort_by=='name' %}selected{% endif %}>Name (A-Z)</option>
+                </select>
+
+                <button onclick="applyFilters()"
+                    class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
+                    Apply
+                </button>
+            </div>
+        </div>
+
+        <!-- Customer Table -->
+        <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Customer</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Contact</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Orders</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Total Spent</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Last Order</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Tags</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for customer in customers %}
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div
+                                        class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-semibold">
+                                        {{ customer.name[0] if customer.name else '?' }}
+                                    </div>
+                                    <div class="ml-4">
+                                        <div class="text-sm font-medium text-gray-900">{{ customer.name or 'Unknown' }}
+                                        </div>
+                                        <div class="text-sm text-gray-500">ID: {{ customer.id }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-gray-900">{{ customer.phone }}</div>
+                                <div class="text-sm text-gray-500">{{ customer.email or 'No email' }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900">{{ customer.total_orders }} total</div>
+                                <div class="text-xs text-green-600">{{ customer.confirmed_orders }} confirmed</div>
+                                <div class="text-xs text-red-600">{{ customer.cancelled_orders }} cancelled</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-semibold text-gray-900">₹{{ customer.total_spent | round(0) }}
+                                </div>
+                                <div class="text-xs text-gray-500">Avg: ₹{{ (customer.total_spent /
+                                    customer.total_orders) | round(0) if customer.total_orders > 0 else 0 }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {{ customer.last_order_date.strftime('%Y-%m-%d') if customer.last_order_date else 'N/A'
+                                }}
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex flex-wrap gap-1">
+                                    {% set tags = customer.tags | tojson | from_json if customer.tags else [] %}
+                                    {% for tag in tags %}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                                        {% if tag == 'VIP' or tag == 'High Value' %}bg-yellow-100 text-yellow-800
+                                        {% elif tag == 'Frequent Buyer' or tag == 'Loyal' %}bg-purple-100 text-purple-800
+                                        {% elif tag == 'High Risk' %}bg-red-100 text-red-800
+                                        {% elif tag == 'New Customer' %}bg-blue-100 text-blue-800
+                                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                        {{ tag }}
+                                    </span>
+                                    {% endfor %}
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <button onclick="viewCustomer('{{ customer.phone }}')"
+                                    class="text-blue-600 hover:text-blue-900 mr-3">View</button>
+                                <a href="/?search={{ customer.phone }}"
+                                    class="text-green-600 hover:text-green-900">Orders</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+
+                        {% if not customers %}
+                        <tr>
+                            <td colspan="7" class="px-6 py-12 text-center text-gray-500">
+                                <div class="text-4xl mb-2">🔍</div>
+                                <p>No customers found</p>
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function applyFilters() {
+            const search = document.getElementById('search').value;
+            const filter = document.getElementById('filter').value;
+            const sort = document.getElementById('sort').value;
+
+            const params = new URLSearchParams();
+            if (search) params.set('search', search);
+            if (filter) params.set('filter', filter);
+            if (sort) params.set('sort', sort);
+
+            window.location.href = '/customers?' + params.toString();
+        }
+
+        // Enter key to search
+        document.getElementById('search').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') applyFilters();
+        });
+
+        function viewCustomer(phone) {
+            // For now, redirect to orders filtered by phone
+            window.location.href = '/?search=' + phone;
+        }
+    </script>
+</body>
+
+</html>

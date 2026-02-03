@@ -43,6 +43,193 @@ def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     return conn
 
+# --- Customer Management Functions ---
+def create_or_update_customer(order):
+    """Create or update customer profile from order data"""
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        phone = order.get('phone')
+        if not phone:
+            return
+        
+        # Check if customer exists
+        c.execute('SELECT * FROM customers WHERE phone = %s', (phone,))
+        existing = c.fetchone()
+        
+        if existing:
+            # Update existing customer
+            c.execute('''
+                UPDATE customers SET
+                    name = COALESCE(%s, name),
+                    email = COALESCE(%s, email),
+                    last_order_date = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE phone = %s
+            ''', (order.get('customer_name'), order.get('email'), order.get('timestamp'), phone))
+        else:
+            # Create new customer
+            c.execute('''
+                INSERT INTO customers (phone, name, email, first_order_date, last_order_date, tags)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            ''', (phone, order.get('customer_name'), order.get('email'), 
+                  order.get('timestamp'), order.get('timestamp'), '["New Customer"]'))
+        
+        conn.commit()
+        conn.close()
+        
+        # Update customer stats
+        update_customer_stats(phone)
+    except Exception as e:
+        print(f"Error creating/updating customer: {e}")
+
+def update_customer_stats(phone):
+    """Recalculate customer statistics"""
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        # Get order statistics
+        c.execute('''
+            SELECT 
+                COUNT(*) as total_orders,
+                COUNT(*) FILTER (WHERE status = 'Confirmed') as confirmed_orders,
+                COUNT(*) FILTER (WHERE status = 'Cancelled') as cancelled_orders,
+                COALESCE(SUM(CASE 
+                    WHEN status = 'Confirmed' AND total IS NOT NULL AND total != '' 
+                    THEN CAST(NULLIF(REGEXP_REPLACE(total, '[^0-9.]', '', 'g'), '') AS DECIMAL(10,2))
+                    ELSE 0 
+                END), 0) as total_spent,
+                COUNT(*) FILTER (WHERE rto_risk = 'High') as rto_count,
+                json_agg(DISTINCT address) FILTER (WHERE address IS NOT NULL AND address != '') as addresses,
+                json_agg(DISTINCT state) FILTER (WHERE state IS NOT NULL AND state != '') as states
+            FROM orders
+            WHERE phone = %s
+        ''', (phone,))
+        
+        stats = c.fetchone()
+        
+        # Get preferred payment method
+        c.execute('''
+            SELECT payment_method
+            FROM orders
+            WHERE phone = %s AND payment_method IS NOT NULL
+            GROUP BY payment_method
+            ORDER BY COUNT(*) DESC
+            LIMIT 1
+        ''', (phone,))
+        preferred_payment = c.fetchone()
+        
+        # Get preferred delivery type
+        c.execute('''
+            SELECT delivery_type
+            FROM orders
+            WHERE phone = %s AND delivery_type IS NOT NULL
+            GROUP BY delivery_type
+            ORDER BY COUNT(*) DESC
+            LIMIT 1
+        ''', (phone,))
+        preferred_delivery = c.fetchone()
+        
+        # Auto-tag based on stats
+        tags = []
+        if stats['total_spent'] > 10000:
+            tags.extend(['VIP', 'High Value'])
+        if stats['total_orders'] >= 5:
+            tags.append('Frequent Buyer')
+        if stats['cancelled_orders'] > 2:
+            tags.append('High Risk')
+        if stats['total_orders'] == 1:
+            tags.append('New Customer')
+        if stats['confirmed_orders'] >= 3:
+            tags.append('Loyal')
+        
+        # Update customer
+        c.execute('''
+            UPDATE customers SET
+                total_orders = %s,
+                confirmed_orders = %s,
+                cancelled_orders = %s,
+                total_spent = %s,
+                rto_count = %s,
+                addresses = %s,
+                states = %s,
+                preferred_payment = %s,
+                preferred_delivery = %s,
+                tags = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE phone = %s
+        ''', (
+            stats['total_orders'],
+            stats['confirmed_orders'],
+            stats['cancelled_orders'],
+            stats['total_spent'],
+            stats['rto_count'],
+            json.dumps(stats['addresses']) if stats['addresses'] else '[]',
+            json.dumps(stats['states']) if stats['states'] else '[]',
+            preferred_payment['payment_method'] if preferred_payment else None,
+            preferred_delivery['delivery_type'] if preferred_delivery else None,
+            json.dumps(tags),
+            phone
+        ))
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error updating customer stats: {e}")
+
+def get_customer_by_phone(phone):
+    """Get customer profile by phone number"""
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('SELECT * FROM customers WHERE phone = %s', (phone,))
+        customer = c.fetchone()
+        conn.close()
+        return customer
+    except Exception as e:
+        print(f"Error getting customer: {e}")
+        return None
+
+def get_all_customers(search=None, filter_type=None, sort_by='last_order_date', sort_order='DESC'):
+    """Get all customers with optional filtering and sorting"""
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        query = 'SELECT * FROM customers WHERE 1=1'
+        params = []
+        
+        # Search filter
+        if search:
+            query += ' AND (name ILIKE %s OR phone ILIKE %s OR email ILIKE %s)'
+            search_pattern = f'%{search}%'
+            params.extend([search_pattern, search_pattern, search_pattern])
+        
+        # Type filters
+        if filter_type == 'repeat':
+            query += ' AND total_orders > 1'
+        elif filter_type == 'vip':
+            query += ' AND total_spent > 10000'
+        elif filter_type == 'high_risk':
+            query += ' AND cancelled_orders > 2'
+        elif filter_type == 'new':
+            query += ' AND total_orders = 1'
+        
+        # Sorting
+        valid_sorts = ['total_orders', 'total_spent', 'last_order_date', 'name']
+        if sort_by in valid_sorts:
+            query += f' ORDER BY {sort_by} {sort_order}'
+        
+        c.execute(query, params)
+        customers = c.fetchall()
+        conn.close()
+        return customers
+    except Exception as e:
+        print(f"Error getting customers: {e}")
+        return []
+
 def init_db():
     if not DATABASE_URL:
         return
@@ -253,6 +440,9 @@ def save_order(order):
     ))
     conn.commit()
     conn.close()
+    
+    # Auto-create/update customer profile
+    create_or_update_customer(order)
 
 def get_orders(status_filter='Pending', start_date=None, end_date=None, search_query=None, payment_filter=None, delivery_filter=None, state_filter=None):
     conn = get_db_connection()
@@ -295,7 +485,6 @@ def get_orders(status_filter='Pending', start_date=None, end_date=None, search_q
     c = conn.cursor()
     c.execute(query, params)
     orders = c.fetchall()
-    conn.close()
     
     orders_list = []
     for row in orders:
@@ -304,7 +493,23 @@ def get_orders(status_filter='Pending', start_date=None, end_date=None, search_q
             order['products'] = json.loads(order['products'])
         except:
             order['products'] = []
+        
+        # Add customer info
+        if order.get('phone'):
+            customer = get_customer_by_phone(order['phone'])
+            if customer:
+                order['customer_total_orders'] = customer['total_orders']
+                order['customer_total_spent'] = customer['total_spent']
+                order['is_repeat_customer'] = customer['total_orders'] > 1
+                order['customer_tags'] = customer.get('tags', '[]')
+            else:
+                order['is_repeat_customer'] = False
+        else:
+            order['is_repeat_customer'] = False
+            
         orders_list.append(order)
+    
+    conn.close()
     return orders_list
 
 def get_daily_summary():
@@ -370,9 +575,19 @@ def update_status():
     new_status = request.form['status']
     conn = get_db_connection()
     c = conn.cursor()
+    
+    # Get order phone before update
+    c.execute('SELECT phone FROM orders WHERE id = %s', (order_id,))
+    order = c.fetchone()
+    
     c.execute('UPDATE orders SET status = %s WHERE id = %s', (new_status, order_id))
     conn.commit()
     conn.close()
+    
+    # Update customer stats
+    if order and order['phone']:
+        update_customer_stats(order['phone'])
+    
     return redirect(request.referrer or '/')
 
 @app.route('/bulk_delete', methods=['POST'])
@@ -714,6 +929,90 @@ def seed_data():
         "delivery_type": "Express"
     })
     return redirect(url_for('dashboard'))
+
+# --- Customer Routes ---
+@app.route('/customers')
+@basic_auth.required
+def customers_page():
+    """Customer database page"""
+    search = request.args.get('search')
+    filter_type = request.args.get('filter')
+    sort_by = request.args.get('sort', 'last_order_date')
+    
+    customers = get_all_customers(search=search, filter_type=filter_type, sort_by=sort_by)
+    
+    # Get customer stats
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute('''
+            SELECT 
+                COUNT(*) as total_customers,
+                COUNT(*) FILTER (WHERE total_orders > 1) as repeat_customers,
+                COALESCE(AVG(total_spent), 0) as avg_lifetime_value
+            FROM customers
+        ''')
+        stats = c.fetchone()
+        conn.close()
+    except:
+        stats = {'total_customers': 0, 'repeat_customers': 0, 'avg_lifetime_value': 0}
+    
+    return render_template('customers.html', 
+                         customers=customers, 
+                         stats=stats,
+                         search=search,
+                         filter_type=filter_type,
+                         sort_by=sort_by)
+
+@app.route('/api/customer/<phone>')
+@basic_auth.required
+def get_customer_api(phone):
+    """Get customer profile via API"""
+    customer = get_customer_by_phone(phone)
+    if customer:
+        return jsonify(dict(customer))
+    return jsonify({'error': 'Customer not found'}), 404
+
+@app.route('/api/customer/<phone>/orders')
+@basic_auth.required
+def get_customer_orders(phone):
+    """Get all orders for a customer"""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('SELECT * FROM orders WHERE phone = %s ORDER BY timestamp DESC', (phone,))
+    orders = c.fetchall()
+    conn.close()
+    return jsonify([dict(order) for order in orders])
+
+@app.route('/api/customer/<phone>/notes', methods=['POST'])
+@basic_auth.required
+def add_customer_note(phone):
+    """Add note to customer profile"""
+    note = request.json.get('note')
+    if not note:
+        return jsonify({'error': 'Note required'}), 400
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    # Get existing notes
+    c.execute('SELECT notes FROM customers WHERE phone = %s', (phone,))
+    customer = c.fetchone()
+    
+    if not customer:
+        return jsonify({'error': 'Customer not found'}), 404
+    
+    # Append new note with timestamp
+    existing_notes = customer['notes'] or ''
+    timestamp = datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')
+    new_note = f"[{timestamp}] {note}"
+    updated_notes = f"{existing_notes}\n{new_note}" if existing_notes else new_note
+    
+    c.execute('UPDATE customers SET notes = %s WHERE phone = %s', (updated_notes, phone))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True})
 
 if __name__ == '__main__':
     app.run(debug=True)
