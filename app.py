@@ -504,8 +504,6 @@ def update_order_details(order_id):
 
 # --- Exports (Protected) ---
 
-# --- Exports (Protected) ---
-
 def get_orders_for_export(start_date, end_date, status=None, delivery_type=None):
     conn = get_db_connection()
     c = conn.cursor()
