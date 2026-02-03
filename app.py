@@ -366,14 +366,64 @@ def reports_page():
 @app.route('/update_status', methods=['POST'])
 @basic_auth.required
 def update_status():
-    order_id = request.form.get('order_id')
-    new_status = request.form.get('status')
+    order_id = request.form['order_id']
+    new_status = request.form['status']
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('UPDATE orders SET status = %s WHERE id = %s', (new_status, order_id))
     conn.commit()
     conn.close()
-    return redirect(request.referrer or url_for('dashboard'))
+    return redirect(request.referrer or '/')
+
+@app.route('/bulk_delete', methods=['POST'])
+@basic_auth.required
+def bulk_delete():
+    """Delete multiple orders by their IDs"""
+    try:
+        data = request.get_json()
+        order_ids = data.get('order_ids', [])
+        
+        if not order_ids:
+            return jsonify({'success': False, 'error': 'No orders selected'}), 400
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        # Delete orders with matching IDs
+        placeholders = ','.join(['%s'] * len(order_ids))
+        query = f'DELETE FROM orders WHERE id IN ({placeholders})'
+        c.execute(query, order_ids)
+        
+        conn.commit()
+        deleted_count = c.rowcount
+        conn.close()
+        
+        return jsonify({'success': True, 'deleted': deleted_count})
+    except Exception as e:
+        print(f"Error in bulk_delete: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/clear_all', methods=['POST'])
+@basic_auth.required
+def clear_all():
+    """Delete all orders in a specific view/status"""
+    try:
+        view = request.args.get('view', 'Confirmed')
+        
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        # Delete all orders with the specified status
+        c.execute('DELETE FROM orders WHERE status = %s', (view,))
+        
+        conn.commit()
+        deleted_count = c.rowcount
+        conn.close()
+        
+        return jsonify({'success': True, 'deleted': deleted_count})
+    except Exception as e:
+        print(f"Error in clear_all: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/confirmed')
 @basic_auth.required
