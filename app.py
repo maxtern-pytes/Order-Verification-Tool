@@ -711,8 +711,41 @@ def viewer_dashboard():
     payment = request.args.get('payment')
     delivery = request.args.get('delivery')
     state = request.args.get('state')
-    orders = get_orders('Confirmed', start_date, end_date, search, payment, delivery, state)
-    return render_template('viewer.html', orders=orders, start_date=start_date, end_date=end_date, search=search)
+    
+    # Get confirmed orders (not packed)
+    conn = get_db_connection()
+    c = conn.cursor()
+    query = '''
+        SELECT * FROM orders 
+        WHERE status = 'Confirmed' AND (is_packed = FALSE OR is_packed IS NULL)
+    '''
+    params = []
+    
+    if start_date:
+        query += ' AND date(timestamp) >= %s'
+        params.append(start_date)
+    if end_date:
+        query += ' AND date(timestamp) <= %s'
+        params.append(end_date)
+    if search:
+        query += ' AND (customer_name ILIKE %s OR phone ILIKE %s OR email ILIKE %s)'
+        params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
+    
+    query += ' ORDER BY timestamp DESC'
+    c.execute(query, params)
+    orders = c.fetchall()
+    conn.close()
+    
+    orders_list = []
+    for row in orders:
+        order = dict(row)
+        try:
+            order['products'] = json.loads(order['products'])
+        except:
+            order['products'] = []
+        orders_list.append(order)
+    
+    return render_template('viewer.html', orders=orders_list, view='confirmed', start_date=start_date, end_date=end_date, search=search)
 
 @app.route('/update_order_details/<order_id>', methods=['POST'])
 @basic_auth.required
@@ -750,6 +783,94 @@ def update_notes():
     conn.close()
     
     return jsonify({'success': True})
+
+@app.route('/mark_packed', methods=['POST'])
+def mark_packed():
+    """Mark order as packed (viewer only)"""
+    order_id = request.form['order_id']
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('UPDATE orders SET is_packed = TRUE WHERE id = %s', (order_id,))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True})
+
+@app.route('/viewer/packed')
+def viewer_packed():
+    """View packed orders"""
+    auth = request.authorization
+    if not auth or auth.username != VIEWER_USERNAME or auth.password != VIEWER_PASSWORD:
+        return Response('Access denied', 401, {'WWW-Authenticate': 'Basic realm="Viewer Login Required"'})
+    
+    # Get packed orders (confirmed + packed)
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''
+        SELECT * FROM orders 
+        WHERE status = 'Confirmed' AND is_packed = TRUE 
+        ORDER BY timestamp DESC
+    ''')
+    orders = c.fetchall()
+    conn.close()
+    
+    orders_list = []
+    for row in orders:
+        order = dict(row)
+        try:
+            order['products'] = json.loads(order['products'])
+        except:
+            order['products'] = []
+        orders_list.append(order)
+    
+    return render_template('viewer.html', orders=orders_list, view='packed')
+
+@app.route('/export/packed')
+def export_packed():
+    """Export packed orders to Excel"""
+    import io
+    from datetime import datetime
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''
+        SELECT * FROM orders 
+        WHERE status = 'Confirmed' AND is_packed = TRUE 
+        ORDER BY timestamp DESC
+    ''')
+    orders = c.fetchall()
+    conn.close()
+    
+    if not orders:
+        return "No packed orders to export", 404
+    
+    # Create CSV content
+    output = io.StringIO()
+    output.write("Order ID,Customer Name,Email,Phone,Address,State,Payment Method,Products,Total,Delivery Type,Timestamp\n")
+    
+    for order in orders:
+        products = str(order.get('products', '')).replace('"', '""')
+        address = str(order.get('address', '')).replace('"', '""')
+        
+        output.write(f'"{order.get("id","")}",')
+        output.write(f'"{order.get("customer_name","")}",')
+        output.write(f'"{order.get("email","")}",')
+        output.write(f'"{order.get("phone","")}",')
+        output.write(f'"{address}",')
+        output.write(f'"{order.get("state","")}",')
+        output.write(f'"{order.get("payment_method","")}",')
+        output.write(f'"{products}",')
+        output.write(f'"{order.get("total","")}",')
+        output.write(f'"{order.get("delivery_type","")}",')
+        output.write(f'"{order.get("timestamp","")}"\n')
+    
+    csv_data = output.getvalue()
+    output.close()
+    
+    response = Response(csv_data, mimetype='text/csv')
+    response.headers['Content-Disposition'] = f'attachment; filename=packed_orders_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+    return response
 
 # --- Exports (Protected) ---
 
