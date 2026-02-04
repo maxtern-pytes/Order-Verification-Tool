@@ -494,20 +494,39 @@ def get_orders(status_filter='Pending', start_date=None, end_date=None, search_q
         except:
             order['products'] = []
         
-        # Add customer info
-        if order.get('phone'):
-            customer = get_customer_by_phone(order['phone'])
-            if customer:
-                order['customer_total_orders'] = customer['total_orders']
-                order['customer_total_spent'] = customer['total_spent']
-                order['is_repeat_customer'] = customer['total_orders'] > 1
-                order['customer_tags'] = customer.get('tags', '[]')
-            else:
-                order['is_repeat_customer'] = False
-        else:
-            order['is_repeat_customer'] = False
+        # Set default customer values
+        order['is_repeat_customer'] = False
+        order['customer_total_orders'] = 0
+        order['customer_total_spent'] = 0
+        order['customer_tags'] = '[]'
             
         orders_list.append(order)
+    
+    # Batch fetch customer data for all orders with phones
+    if orders_list:
+        phones = [o['phone'] for o in orders_list if o.get('phone')]
+        if phones:
+            try:
+                # Use a single query to get all customer data
+                placeholders = ','.join(['%s'] * len(phones))
+                c.execute(f'''
+                    SELECT phone, total_orders, total_spent, tags
+                    FROM customers
+                    WHERE phone IN ({placeholders})
+                ''', phones)
+                customers_dict = {row['phone']: row for row in c.fetchall()}
+                
+                # Enrich orders with customer data
+                for order in orders_list:
+                    if order.get('phone') and order['phone'] in customers_dict:
+                        customer = customers_dict[order['phone']]
+                        order['customer_total_orders'] = customer['total_orders']
+                        order['customer_total_spent'] = customer['total_spent']
+                        order['is_repeat_customer'] = customer['total_orders'] > 1
+                        order['customer_tags'] = customer.get('tags', '[]')
+            except Exception as e:
+                # If customers table doesn't exist yet, just skip customer enrichment
+                print(f"Customer enrichment skipped: {e}")
     
     conn.close()
     return orders_list
