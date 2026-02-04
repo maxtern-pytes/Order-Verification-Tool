@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Confirmed Orders - Viewer</title>
+    <title>{% if view == 'packed' %}Packed Orders{% else %}Orders to Pack{% endif %} - Viewer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -63,7 +63,7 @@
         }
 
         function clearAll() {
-            if (!confirm('Are you sure you want to delete ALL confirmed orders? This cannot be undone!')) {
+            if (!confirm('Are you sure you want to delete ALL orders in this view? This cannot be undone!')) {
                 return;
             }
 
@@ -82,7 +82,37 @@
         }
 
         function exportToExcel() {
+            {% if view == 'packed' %}
+            window.location.href = '/export/packed';
+            {% else %}
             window.location.href = '/export/confirmed';
+            {% endif %}
+        }
+
+        function markAsPacked(orderId) {
+            if (!confirm('Mark this order as packed?')) {
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('order_id', orderId);
+
+            fetch('/mark_packed', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert('Error marking order as packed');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error marking order as packed');
+                });
         }
     </script>
 </head>
@@ -92,11 +122,27 @@
         <!-- Header -->
         <header class="bg-white rounded-lg shadow-sm p-4 md:p-6 mb-6">
             <div class="flex flex-col gap-4">
-                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div>
-                        <h1 class="text-2xl md:text-3xl font-bold text-gray-900">Confirmed Orders</h1>
-                        <p class="text-sm text-gray-500 mt-1">Read-only view</p>
+                <!-- Title and Tabs -->
+                <div class="flex flex-col gap-4">
+                    <h1 class="text-2xl md:text-3xl font-bold text-gray-900">📦 Order Viewer</h1>
+
+                    <!-- Tabs -->
+                    <div class="border-b border-gray-200">
+                        <nav class="-mb-px flex space-x-8">
+                            <a href="/viewer"
+                                class="{% if view == 'confirmed' or not view %}border-blue-500 text-blue-600{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{% endif %} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                                ✅ To Pack ({{ orders|length }})
+                            </a>
+                            <a href="/viewer/packed"
+                                class="{% if view == 'packed' %}border-green-500 text-green-600{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{% endif %} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">
+                                📦 Packed Orders
+                            </a>
+                        </nav>
                     </div>
+                </div>
+
+                <!-- Export and Actions -->
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div class="flex flex-col md:flex-row gap-3">
                         <input type="date" id="start_date" value="{{ start_date or '' }}"
                             class="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
@@ -220,11 +266,26 @@
                             Call
                         </a>
                     </div>
+
+                    <!-- Mark as Packed Button (only show in To Pack tab) -->
+                    {% if view != 'packed' %}
+                    <button onclick="markAsPacked('{{ order.id }}')"
+                        class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7">
+                            </path>
+                        </svg>
+                        Mark as Packed
+                    </button>
+                    {% endif %}
                 </div>
             </div>
             {% else %}
             <div class="col-span-full text-center py-12">
-                <p class="text-gray-400 text-lg">No confirmed orders found</p>
+                <p class="text-gray-400 text-lg">{% if view == 'packed' %}No packed orders{% else %}No orders to pack{%
+                    endif %}</p>
+                <p class="text-gray-500 text-sm mt-2">{% if view == 'packed' %}Orders marked as packed will appear
+                    here{% else %}All confirmed orders have been packed{% endif %}</p>
             </div>
             {% endfor %}
         </div>
