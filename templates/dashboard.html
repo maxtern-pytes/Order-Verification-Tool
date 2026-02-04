@@ -480,7 +480,21 @@
                             {% if order.payment_method == 'Prepaid' %} bg-blue-100 text-blue-700 {% else %} bg-gray-200 text-gray-700 {% endif %}">
                             {{ order.payment_method or 'COD' }}
                         </span>
-                        <p class="text-xs text-gray-400 mt-1">{{ order.timestamp }}</p>
+                        <div class="flex items-center gap-1 mt-1">
+                            <p class="text-xs text-gray-400">{{ order.timestamp }}</p>
+                            <button
+                                onclick="openNotesModal('{{ order.id }}', `{{ order.notes | replace('`', '\\`') | replace('\n', '\\n') }}`)"
+                                class="text-gray-500 hover:text-blue-600 transition-colors p-0.5 rounded hover:bg-blue-50"
+                                title="{% if order.notes %}View/Edit Notes{% else %}Add Notes{% endif %}">
+                                <svg class="w-3.5 h-3.5"
+                                    fill="{% if order.notes %}currentColor{% else %}none{% endif %}"
+                                    stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z">
+                                    </path>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
