@@ -1,0 +1,4 @@
+# Fix for export_confirmed route - complete implementation
+# Add this after line 902 in app.py
+
+        output.write(f'"{order.get("customer_name","")}",')

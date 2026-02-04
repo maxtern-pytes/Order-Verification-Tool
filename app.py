@@ -872,8 +872,34 @@ def export_packed():
     response.headers['Content-Disposition'] = f'attachment; filename=packed_orders_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
     return response
 
-# --- Exports (Protected) ---
-
+@app.route('/export/confirmed')
+def export_confirmed():
+    """Export confirmed (unpacked) orders to Excel"""
+    import io
+    from datetime import datetime
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''
+        SELECT * FROM orders 
+        WHERE status = 'Confirmed' AND (is_packed = FALSE OR is_packed IS NULL)
+        ORDER BY timestamp DESC
+    ''')
+    orders = c.fetchall()
+    conn.close()
+    
+    if not orders:
+        return "No confirmed orders to export", 404
+    
+    # Create CSV content
+    output = io.StringIO()
+    output.write("Order ID,Customer Name,Email,Phone,Address,State,Payment Method,Products,Total,Delivery Type,Timestamp\n")
+    
+    for order in orders:
+        products = str(order.get('products', '')).replace('"', '""')
+        address = str(order.get('address', '')).replace('"', '""')
+        
+        output.write(f'"{order.get("id","")}",')
 def get_orders_for_export(start_date, end_date, status=None, delivery_type=None):
     conn = get_db_connection()
     c = conn.cursor()
