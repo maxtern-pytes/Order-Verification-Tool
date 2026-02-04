@@ -736,6 +736,21 @@ def update_order_details(order_id):
     conn.close()
     return redirect(request.referrer or url_for('dashboard'))
 
+@app.route('/update_notes', methods=['POST'])
+@basic_auth.required
+def update_notes():
+    """Update order notes"""
+    order_id = request.form['order_id']
+    notes = request.form['notes']
+    
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('UPDATE orders SET notes = %s WHERE id = %s', (notes, order_id))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({'success': True})
+
 # --- Exports (Protected) ---
 
 def get_orders_for_export(start_date, end_date, status=None, delivery_type=None):
