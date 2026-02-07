@@ -529,7 +529,7 @@
                     <div class="flex items-center justify-between bg-blue-50 p-3 rounded-lg gap-2">
                         <span class="font-mono text-blue-900 font-medium text-sm">{{ order.phone }}</span>
                         <div class="flex gap-2">
-                            <a href="https://wa.me/{{ order.phone.replace('+', '').replace(' ', '') }}?text={{ 'Hello ' + order.customer_name + '! 👋%0A%0AYour order *' + order.id + '* is ready for confirmation.%0A%0A📦 *Order Details:*%0A' + (order.products | replace('[', '') | replace(']', '') | replace('\"', '') | urlencode) + '
+                            <a href="https://wa.me/91{{ order.phone.replace('+', '').replace(' ', '') }}?text={{ 'Hello ' + order.customer_name + '! 👋%0A%0AYour order *' + order.id + '* is ready for confirmation.%0A%0A📦 *Order Details:*%0A' + (order.products | replace('[', '') | replace(']', '') | replace('\"', '') | urlencode) + '
                                 %0A%0A💰 Total: ₹' + order.total + '%0A🚚 Delivery: ' + (order.delivery_type
                                 or 'Standard' ) + '%0A💳 Payment: ' + (order.payment_method or 'COD' )
                                 + '%0A%0A📍 Delivery Address:%0A' + (order.address | urlencode)
