@@ -745,7 +745,10 @@ def viewer_dashboard():
             order['products'] = []
         orders_list.append(order)
     
-    return render_template('viewer.html', orders=orders_list, view='confirmed', start_date=start_date, end_date=end_date, search=search)
+    
+    return render_template('viewer.html', orders=orders_list, view='confirmed', 
+                         start_date=start_date, end_date=end_date, search=search,
+                         payment=payment, delivery=delivery, state=state)
 
 @app.route('/update_order_details/<order_id>', methods=['POST'])
 @basic_auth.required
