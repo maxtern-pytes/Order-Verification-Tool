@@ -875,6 +875,29 @@ def export_packed():
     response.headers['Content-Disposition'] = f'attachment; filename=packed_orders_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
     return response
 
+def get_orders_for_export(start_date, end_date, status=None, delivery_type=None):
+    conn = get_db_connection()
+    c = conn.cursor()
+    query = "SELECT * FROM orders WHERE 1=1"
+    params = []
+    
+    if start_date:
+        query += " AND date(timestamp) >= %s"
+        params.append(start_date)
+    if end_date:
+        query += " AND date(timestamp) <= %s"
+        params.append(end_date)
+    if status:
+        query += " AND status = %s"
+        params.append(status)
+    if delivery_type:
+        query += " AND delivery_type = %s"
+        params.append(delivery_type)
+        
+    query += " ORDER BY timestamp DESC"
+    c.execute(query, tuple(params))
+    return c.fetchall()
+
 @app.route('/export/confirmed')
 def export_confirmed():
     """Export confirmed (unpacked) orders to Excel"""
@@ -903,31 +926,28 @@ def export_confirmed():
         address = str(order.get('address', '')).replace('"', '""')
         
         output.write(f'"{order.get("id","")}",')
-def get_orders_for_export(start_date, end_date, status=None, delivery_type=None):
-    conn = get_db_connection()
-    c = conn.cursor()
-    query = "SELECT * FROM orders WHERE 1=1"
-    params = []
+        output.write(f'"{order.get("customer_name","")}",')
+        output.write(f'"{order.get("email","")}",')
+        output.write(f'"{order.get("phone","")}",')
+        output.write(f'"{address}",')
+        output.write(f'"{order.get("state","")}",')
+        output.write(f'"{order.get("payment_method","")}",')
+        output.write(f'"{products}",')
+        output.write(f'"{order.get("total","")}",')
+        output.write(f'"{order.get("delivery_type","")}",')
+        output.write(f'"{order.get("timestamp","")}"\n')
     
-    if start_date:
-        query += " AND date(timestamp) >= %s"
-        params.append(start_date)
-    if end_date:
-        query += " AND date(timestamp) <= %s"
-        params.append(end_date)
-    if status:
-        query += " AND status = %s"
-        params.append(status)
-    if delivery_type:
-        query += " AND delivery_type = %s"
-        params.append(delivery_type)
-        
-    query += " ORDER BY timestamp DESC"
-    c.execute(query, tuple(params))
-    return c.fetchall()
+    csv_data = output.getvalue()
+    output.close()
+    
+    response = Response(csv_data, mimetype='text/csv')
+    response.headers['Content-Disposition'] = f'attachment; filename=confirmed_orders_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+    return response
+
 
 @app.route('/export/csv')
 @basic_auth.required
+
 def export_csv():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
