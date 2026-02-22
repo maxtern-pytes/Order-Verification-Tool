@@ -13,6 +13,9 @@
         }
     </style>
     <script>
+        // Use a JS constant for the view to keep the IDE happy
+        const CURRENT_VIEW = '{{ view or "confirmed" }}';
+
         // Bulk delete functions
         function toggleSelectAll() {
             const selectAll = document.getElementById('select_all');
@@ -67,7 +70,7 @@
                 return;
             }
 
-            fetch('/clear_all?view=Confirmed', {
+            fetch('/clear_all?view=' + CURRENT_VIEW, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             })
@@ -82,11 +85,11 @@
         }
 
         function exportToExcel() {
-            {% if view == 'packed' %}
-            window.location.href = '/export/packed';
-            {% else %}
-            window.location.href = '/export/confirmed';
-            {% endif %}
+            if (CURRENT_VIEW === 'packed') {
+                window.location.href = '/export/packed';
+            } else {
+                window.location.href = '/export/confirmed';
+            }
         }
 
         function markAsPacked(orderId) {
@@ -199,39 +202,41 @@
                         <label class="block text-xs font-medium text-gray-700 mb-1">Payment</label>
                         <select name="payment" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
                             <option value="">All</option>
-                            <option value="Prepaid" {{ 'selected' if payment == 'Prepaid' }}>Prepaid</option>
-                            <option value="COD" {{ 'selected' if payment == 'COD' }}>COD</option>
+                            <option value="Prepaid" {{ 'selected' if payment=='Prepaid' }}>Prepaid</option>
+                            <option value="COD" {{ 'selected' if payment=='COD' }}>COD</option>
                         </select>
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-700 mb-1">Delivery</label>
                         <select name="delivery" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
                             <option value="">All</option>
-                            <option value="Standard" {{ 'selected' if delivery == 'Standard' }}>Standard</option>
-                            <option value="Express" {{ 'selected' if delivery == 'Express' }}>Express</option>
+                            <option value="Standard" {{ 'selected' if delivery=='Standard' }}>Standard</option>
+                            <option value="Express" {{ 'selected' if delivery=='Express' }}>Express</option>
                         </select>
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-gray-700 mb-1">State</label>
                         <select name="state" class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
                             <option value="">All</option>
-                            <option value="Delhi" {{ 'selected' if state == 'Delhi' }}>Delhi</option>
-                            <option value="Maharashtra" {{ 'selected' if state == 'Maharashtra' }}>Maharashtra</option>
-                            <option value="Karnataka" {{ 'selected' if state == 'Karnataka' }}>Karnataka</option>
-                            <option value="Tamil Nadu" {{ 'selected' if state == 'Tamil Nadu' }}>Tamil Nadu</option>
-                            <option value="Gujarat" {{ 'selected' if state == 'Gujarat' }}>Gujarat</option>
-                            <option value="Rajasthan" {{ 'selected' if state == 'Rajasthan' }}>Rajasthan</option>
-                            <option value="West Bengal" {{ 'selected' if state == 'West Bengal' }}>West Bengal</option>
-                            <option value="Telangana" {{ 'selected' if state == 'Telangana' }}>Telangana</option>
-                            <option value="Haryana" {{ 'selected' if state == 'Haryana' }}>Haryana</option>
-                            <option value="Punjab" {{ 'selected' if state == 'Punjab' }}>Punjab</option>
+                            <option value="Delhi" {{ 'selected' if state=='Delhi' }}>Delhi</option>
+                            <option value="Maharashtra" {{ 'selected' if state=='Maharashtra' }}>Maharashtra</option>
+                            <option value="Karnataka" {{ 'selected' if state=='Karnataka' }}>Karnataka</option>
+                            <option value="Tamil Nadu" {{ 'selected' if state=='Tamil Nadu' }}>Tamil Nadu</option>
+                            <option value="Gujarat" {{ 'selected' if state=='Gujarat' }}>Gujarat</option>
+                            <option value="Rajasthan" {{ 'selected' if state=='Rajasthan' }}>Rajasthan</option>
+                            <option value="West Bengal" {{ 'selected' if state=='West Bengal' }}>West Bengal</option>
+                            <option value="Telangana" {{ 'selected' if state=='Telangana' }}>Telangana</option>
+                            <option value="Haryana" {{ 'selected' if state=='Haryana' }}>Haryana</option>
+                            <option value="Punjab" {{ 'selected' if state=='Punjab' }}>Punjab</option>
                         </select>
                     </div>
                     <div class="md:col-span-2 lg:col-span-5 flex gap-2">
-                        <button type="submit" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium">
+                        <button type="submit"
+                            class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium">
                             Apply Filters
                         </button>
-                        <a href="/viewer" class="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm font-medium">
+                        <a href="/viewer"
+                            class="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm font-medium">
                             Clear
                         </a>
                     </div>
