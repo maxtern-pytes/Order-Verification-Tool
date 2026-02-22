@@ -444,46 +444,53 @@ def save_order(order):
     # Auto-create/update customer profile
     create_or_update_customer(order)
 
-def get_orders(status_filter='Pending', start_date=None, end_date=None, search_query=None, payment_filter=None, delivery_filter=None, state_filter=None):
+def get_orders(status_filter='Pending', start_date=None, end_date=None, search_query=None, payment_filter=None, delivery_filter=None, state_filter=None, page=1, per_page=50):
     conn = get_db_connection()
-    query = 'SELECT * FROM orders WHERE status = %s'
+    
+    # Base conditions
+    conditions = ['status = %s']
     params = [status_filter]
 
     if start_date:
-        query += ' AND timestamp >= %s'
+        conditions.append('timestamp >= %s')
         params.append(start_date + " 00:00:00")
     if end_date:
-        query += ' AND timestamp <= %s'
+        conditions.append('timestamp <= %s')
         params.append(end_date + " 23:59:59")
     
     if search_query:
-        # Smart search: if 5 or fewer digits, search only Order ID
-        # Otherwise search phone, name, email, address
         if search_query.isdigit() and len(search_query) <= 5:
-            query += ' AND id ILIKE %s'
-            wildcard = f"%{search_query}%"
-            params.append(wildcard)
+            conditions.append('id ILIKE %s')
+            params.append(f"%{search_query}%")
         else:
-            query += ' AND (customer_name ILIKE %s OR phone ILIKE %s OR email ILIKE %s OR address ILIKE %s)'
+            conditions.append('(customer_name ILIKE %s OR phone ILIKE %s OR email ILIKE %s OR address ILIKE %s)')
             wildcard = f"%{search_query}%"
             params.extend([wildcard, wildcard, wildcard, wildcard])
     
-    # New filters
     if payment_filter:
-        query += ' AND payment_method = %s'
+        conditions.append('payment_method = %s')
         params.append(payment_filter)
     
     if delivery_filter:
-        query += ' AND delivery_type = %s'
+        conditions.append('delivery_type = %s')
         params.append(delivery_filter)
     
     if state_filter:
-        query += ' AND state = %s'
+        conditions.append('state = %s')
         params.append(state_filter)
     
-    query += ' ORDER BY timestamp DESC'
+    where_clause = ' AND '.join(conditions)
+    
+    # Get total count
+    count_query = f'SELECT COUNT(*) FROM orders WHERE {where_clause}'
     c = conn.cursor()
-    c.execute(query, params)
+    c.execute(count_query, params)
+    total_count = c.fetchone()['count']
+    
+    # Get paginated data
+    offset = (page - 1) * per_page
+    query = f'SELECT * FROM orders WHERE {where_clause} ORDER BY timestamp DESC LIMIT %s OFFSET %s'
+    c.execute(query, params + [per_page, offset])
     orders = c.fetchall()
     
     orders_list = []
@@ -529,7 +536,7 @@ def get_orders(status_filter='Pending', start_date=None, end_date=None, search_q
                 print(f"Customer enrichment skipped: {e}")
     
     conn.close()
-    return orders_list
+    return orders_list, total_count
 
 def get_daily_summary():
     conn = get_db_connection()
@@ -563,11 +570,17 @@ def dashboard():
     payment = request.args.get('payment')
     delivery = request.args.get('delivery')
     state = request.args.get('state')
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
     try:
-        orders = get_orders('Pending', start_date, end_date, search, payment, delivery, state)
+        orders, total_count = get_orders('Pending', start_date, end_date, search, payment, delivery, state, page, per_page)
     except Exception as e:
         return f"Database Error: {e}. Did you set DATABASE_URL in .env?", 500
-    return render_template('dashboard.html', orders=orders, view='Pending', start_date=start_date, end_date=end_date, search=search)
+    
+    total_pages = (total_count + per_page - 1) // per_page
+    return render_template('dashboard.html', orders=orders, view='Pending', 
+                         start_date=start_date, end_date=end_date, search=search,
+                         page=page, total_pages=total_pages, total_orders=total_count)
 
 @app.route('/call-again')
 @basic_auth.required
@@ -578,8 +591,13 @@ def call_again_page():
     payment = request.args.get('payment')
     delivery = request.args.get('delivery')
     state = request.args.get('state')
-    orders = get_orders('Call Again', start_date, end_date, search, payment, delivery, state)
-    return render_template('dashboard.html', orders=orders, view='Call Again', start_date=start_date, end_date=end_date, search=search)
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    orders, total_count = get_orders('Call Again', start_date, end_date, search, payment, delivery, state, page, per_page)
+    total_pages = (total_count + per_page - 1) // per_page
+    return render_template('dashboard.html', orders=orders, view='Call Again', 
+                         start_date=start_date, end_date=end_date, search=search,
+                         page=page, total_pages=total_pages, total_orders=total_count)
 
 @app.route('/reports')
 @basic_auth.required
@@ -668,13 +686,30 @@ def confirmed_page():
     payment = request.args.get('payment')
     delivery = request.args.get('delivery')
     state = request.args.get('state')
-    orders = get_orders('Confirmed', start_date, end_date, search, payment, delivery, state)
-    return render_template('dashboard.html', orders=orders, view='Confirmed', start_date=start_date, end_date=end_date, search=search)
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    orders, total_count = get_orders('Confirmed', start_date, end_date, search, payment, delivery, state, page, per_page)
+    total_pages = (total_count + per_page - 1) // per_page
+    return render_template('dashboard.html', orders=orders, view='Confirmed', 
+                         start_date=start_date, end_date=end_date, search=search,
+                         page=page, total_pages=total_pages, total_orders=total_count)
 
 @app.route('/cancelled')
 @basic_auth.required
 def cancelled_page():
     start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    search = request.args.get('search')
+    payment = request.args.get('payment')
+    delivery = request.args.get('delivery')
+    state = request.args.get('state')
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    orders, total_count = get_orders('Cancelled', start_date, end_date, search, payment, delivery, state, page, per_page)
+    total_pages = (total_count + per_page - 1) // per_page
+    return render_template('dashboard.html', orders=orders, view='Cancelled', 
+                         start_date=start_date, end_date=end_date, search=search,
+                         page=page, total_pages=total_pages, total_orders=total_count)
     end_date = request.args.get('end_date')
     search = request.args.get('search')
     payment = request.args.get('payment')

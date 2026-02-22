@@ -619,6 +619,55 @@
             </div>
             {% endfor %}
         </div>
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div
+            class="mt-8 flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+            <div class="text-sm text-gray-500">
+                Showing page <span class="font-semibold text-gray-900">{{ page }}</span> of <span
+                    class="font-semibold text-gray-900">{{ total_pages }}</span>
+                (<span class="font-semibold text-gray-900">{{ total_orders }}</span> total orders)
+            </div>
+
+            <nav class="flex items-center gap-1">
+                {% set args = request.args.to_dict() %}
+
+                <!-- Previous Button -->
+                {% if page > 1 %}
+                <a href="{{ url_for(request.endpoint, **dict(args, page=page-1)) }}"
+                    class="px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                    Previous
+                </a>
+                {% else %}
+                <span
+                    class="px-3 py-2 rounded-lg border border-gray-100 text-sm font-medium text-gray-300 cursor-not-allowed">
+                    Previous
+                </span>
+                {% endif %}
+
+                <!-- Page Numbers (Simple window) -->
+                {% for p in range([1, page - 2]|max, [total_pages + 1, page + 3]|min) %}
+                <a href="{{ url_for(request.endpoint, **dict(args, page=p)) }}"
+                    class="w-10 h-10 flex items-center justify-center rounded-lg text-sm font-medium transition-colors
+                   {% if p == page %} bg-blue-600 text-white {% else %} text-gray-600 hover:bg-gray-50 border border-transparent hover:border-gray-200 {% endif %}">
+                    {{ p }}
+                </a>
+                {% endfor %}
+
+                <!-- Next Button -->
+                {% if page < total_pages %} <a href="{{ url_for(request.endpoint, **dict(args, page=page+1)) }}"
+                    class="px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                    Next
+                    </a>
+                    {% else %}
+                    <span
+                        class="px-3 py-2 rounded-lg border border-gray-100 text-sm font-medium text-gray-300 cursor-not-allowed">
+                        Next
+                    </span>
+                    {% endif %}
+            </nav>
+        </div>
         {% endif %}
     </div>
 
