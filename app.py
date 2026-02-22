@@ -16,6 +16,7 @@ load_dotenv(override=True)
 
 app = Flask(__name__)
 IST = pytz.timezone('Asia/Kolkata')
+_db_initialized = False
 
 # --- Configuration ---
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -56,17 +57,31 @@ def get_db_connection():
     
     for attempt in range(max_retries):
         try:
-            conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor, connect_timeout=30)
+            # Use a shorter timeout for the first attempt on port 6543 to fail fast
+            timeout = 10 if (attempt == 0 and ":6543" in DATABASE_URL) else 30
+            conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor, connect_timeout=timeout)
+            
+            # Lazy initialize database on first successful connection
+            global _db_initialized
+            if not _db_initialized:
+                # We don't want to block the first request too much, 
+                # but we need the table to exist.
+                try:
+                    init_db(conn)
+                    _db_initialized = True
+                except Exception as ie:
+                    print(f"DEBUG: Lazy DB init failed (might be another worker): {ie}")
+            
             return conn
         except Exception as e:
             print(f"DEBUG: Connection attempt {attempt + 1} failed: {e}")
             
-            # If it's a timeout on port 6543, maybe try 5432 as a fallback on later retries
-            if "port 6543" in str(e) and attempt >= 1:
+            # If it's a timeout on port 6543, try 5432 immediately on retries
+            if "port 6543" in str(e):
                 fallback_url = DATABASE_URL.replace(":6543", ":5432")
-                print(f"DEBUG: Attempting fallback to port 5432...")
+                print(f"DEBUG: Attempting immediate fallback to port 5432...")
                 try:
-                    conn = psycopg2.connect(fallback_url, cursor_factory=RealDictCursor, connect_timeout=30)
+                    conn = psycopg2.connect(fallback_url, cursor_factory=RealDictCursor, connect_timeout=20)
                     print(f"DEBUG: Fallback to 5432 succeeded!")
                     return conn
                 except Exception as fe:
@@ -264,11 +279,19 @@ def get_all_customers(search=None, filter_type=None, sort_by='last_order_date', 
         print(f"Error getting customers: {e}")
         return []
 
-def init_db():
+def init_db(conn=None):
     if not DATABASE_URL:
         return
+    
+    should_close = False
+    if conn is None:
+        try:
+            conn = get_db_connection()
+            should_close = True
+        except:
+            return
+
     try:
-        conn = get_db_connection()
         c = conn.cursor()
         c.execute('''
             CREATE TABLE IF NOT EXISTS orders (
@@ -308,12 +331,14 @@ def init_db():
             c.execute("ALTER TABLE orders ADD COLUMN email TEXT")
 
         conn.commit()
-        conn.close()
+        if should_close:
+            conn.close()
         print("Database initialized successfully.")
     except Exception as e:
         print(f"Error initializing database: {e}")
 
-init_db()
+# Removed global init_db() call to prevent blocking Render startup
+# init_db()
 
 # --- Helper Functions ---
 
