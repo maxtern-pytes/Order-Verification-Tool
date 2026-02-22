@@ -40,12 +40,20 @@ def check_viewer_auth(username, password):
 
 # --- Database Setup ---
 def get_db_connection():
-    try:
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor, connect_timeout=10)
-        return conn
-    except Exception as e:
-        print(f"DEBUG: Failed to connect to DB: {e}")
-        raise e
+    import time
+    max_retries = 3
+    retry_delay = 5
+    
+    for attempt in range(max_retries):
+        try:
+            conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor, connect_timeout=30)
+            return conn
+        except Exception as e:
+            print(f"DEBUG: Connection attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+            else:
+                raise e
 
 # --- Customer Management Functions ---
 def create_or_update_customer(order):
