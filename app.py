@@ -40,8 +40,12 @@ def check_viewer_auth(username, password):
 
 # --- Database Setup ---
 def get_db_connection():
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-    return conn
+    try:
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor, connect_timeout=10)
+        return conn
+    except Exception as e:
+        print(f"DEBUG: Failed to connect to DB: {e}")
+        raise e
 
 # --- Customer Management Functions ---
 def create_or_update_customer(order):
@@ -710,13 +714,6 @@ def cancelled_page():
     return render_template('dashboard.html', orders=orders, view='Cancelled', 
                          start_date=start_date, end_date=end_date, search=search,
                          page=page, total_pages=total_pages, total_orders=total_count)
-    end_date = request.args.get('end_date')
-    search = request.args.get('search')
-    payment = request.args.get('payment')
-    delivery = request.args.get('delivery')
-    state = request.args.get('state')
-    orders = get_orders('Cancelled', start_date, end_date, search, payment, delivery, state)
-    return render_template('dashboard.html', orders=orders, view='Cancelled', start_date=start_date, end_date=end_date, search=search)
 
 @app.route('/viewer')
 def viewer_dashboard():
