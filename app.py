@@ -44,12 +44,34 @@ def get_db_connection():
     max_retries = 3
     retry_delay = 5
     
+    # Mask password for logging
+    masked_url = DATABASE_URL
+    if '@' in masked_url:
+        parts = masked_url.split('@')
+        left = parts[0].split(':')
+        if len(left) > 2:
+            masked_url = left[0] + ":" + left[1] + ":****@" + parts[1]
+    
+    print(f"DEBUG: Connecting to DB... URL: {masked_url}")
+    
     for attempt in range(max_retries):
         try:
             conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor, connect_timeout=30)
             return conn
         except Exception as e:
             print(f"DEBUG: Connection attempt {attempt + 1} failed: {e}")
+            
+            # If it's a timeout on port 6543, maybe try 5432 as a fallback on later retries
+            if "port 6543" in str(e) and attempt >= 1:
+                fallback_url = DATABASE_URL.replace(":6543", ":5432")
+                print(f"DEBUG: Attempting fallback to port 5432...")
+                try:
+                    conn = psycopg2.connect(fallback_url, cursor_factory=RealDictCursor, connect_timeout=30)
+                    print(f"DEBUG: Fallback to 5432 succeeded!")
+                    return conn
+                except Exception as fe:
+                    print(f"DEBUG: Fallback to 5432 also failed: {fe}")
+
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
             else:
