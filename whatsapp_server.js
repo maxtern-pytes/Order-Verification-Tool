@@ -140,6 +140,32 @@ client.on('message', async (msg) => {
             console.error('DB Update Error:', err);
             io.emit('log', `Error updating order for ${phone}: ${err.message}`);
         }
+    } else {
+        // Intelligent Reply: Capture message as Note if it's not a standard command
+        console.log(`Message captured as note for ${phone}: ${msg.body}`);
+        try {
+            const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+            const noteEntry = `\n[Customer Message @ ${timestamp}]: ${msg.body}`;
+            
+            const query = `
+                UPDATE orders 
+                SET notes = COALESCE(notes, '') || $1 
+                WHERE id IN (
+                    SELECT id FROM orders 
+                    WHERE phone LIKE '%' || $2 
+                    ORDER BY length(id) DESC, id DESC 
+                    LIMIT 1
+                )
+            `;
+            const result = await pool.query(query, [noteEntry, phone]);
+            
+            if (result.rowCount > 0) {
+                io.emit('log', `Customer message from ${phone} appended to Agent Notes.`);
+                // No auto-reply to avoid spamming the customer if they are just chatting
+            }
+        } catch (err) {
+            console.error('Captured Note Error:', err);
+        }
     }
 });
 
