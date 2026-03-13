@@ -1,0 +1,6 @@
+DEBUG: Connecting to DB... Ending with: gres?sslmode=require
+Error initializing database: 0
+ * Serving Flask app 'app'
+ * Debug mode: on
+DEBUG: Connecting to DB... Ending with: gres?sslmode=require
+Error initializing database: 0

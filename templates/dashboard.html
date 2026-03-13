@@ -6,10 +6,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Order Verification</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
+            background: #f8fafc;
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+        }
+        .premium-shadow {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+        }
+        .pulse-emerald {
+            animation: pulse-emerald 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse-emerald {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: .7; transform: scale(1.1); }
+        }
+        .log-entry {
+            animation: fadeInSlide 0.3s ease-out forwards;
+        }
+        @keyframes fadeInSlide {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .mono-font { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Premium Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .broadcast-panel {
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
     </style>
     <script>
@@ -367,6 +405,116 @@
                 👥 Customers
             </a>
         </nav>
+    </div>
+
+    <!-- WHATSAPP BROADCAST HUB -->
+    <div id="whatsapp_hub" class="mb-8 broadcast-panel">
+        <div class="glass rounded-3xl p-8 premium-shadow">
+            <div class="flex flex-col lg:flex-row gap-8">
+                <!-- Left Column: Settings & Controls -->
+                <div class="lg:w-1/3">
+                    <div class="flex items-center gap-3 mb-6">
+                        <div id="wa_status_dot" class="w-3 h-3 rounded-full bg-gray-400"></div>
+                        <h2 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600">
+                            WhatsApp Broadcast Hub
+                        </h2>
+                    </div>
+
+                    <!-- Session Controls -->
+                    <div id="wa_auth_panel" class="mb-8">
+                        <p class="text-sm text-gray-500 mb-4">Link your WhatsApp account to start broadcasting.</p>
+                        <div id="qrcode_container" class="bg-white p-4 rounded-2xl inline-block shadow-sm mb-4 transition-transform hover:scale-105">
+                            <div id="wa_qrcode" class="w-48 h-48 flex items-center justify-center bg-gray-50 rounded-lg">
+                                <span class="text-xs text-gray-400 text-center px-4">Waiting for QR code...</span>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-400 italic">Scan this with your WhatsApp Linked Devices</p>
+                    </div>
+
+                    <div id="wa_connected_panel" class="hidden mb-8">
+                        <div class="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-center justify-between mb-4 animate-in fade-in duration-500">
+                            <div class="flex items-center gap-3">
+                                <div class="w-2 h-2 rounded-full bg-emerald-500 pulse-emerald"></div>
+                                <span class="text-sm font-medium text-emerald-700">Account Connected</span>
+                            </div>
+                            <button onclick="disconnectWhatsApp()" class="text-xs text-red-600 hover:text-red-700 font-semibold underline">Disconnect</button>
+                        </div>
+                    </div>
+
+                    <!-- Speed & Saftey -->
+                    <div class="space-y-4">
+                        <label class="block text-sm font-semibold text-gray-700">Anti-Ban Speed Strategy</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button onclick="setSpeed('safe')" id="speed_safe" class="px-3 py-2 text-xs font-medium rounded-xl border border-gray-200 hover:border-indigo-400 transition-colors">🛡️ Safe</button>
+                            <button onclick="setSpeed('balanced')" id="speed_balanced" class="px-3 py-2 text-xs font-medium rounded-xl border-2 border-indigo-600 bg-indigo-50 text-indigo-700 transition-colors">⚖️ Balanced</button>
+                            <button onclick="setSpeed('fast')" id="speed_fast" class="px-3 py-2 text-xs font-medium rounded-xl border border-gray-200 hover:border-indigo-400 transition-colors">🚀 Fast</button>
+                        </div>
+                        <p id="speed_desc" class="text-[10px] text-gray-400 italic mt-2">Recommended: 15-45s delay with pulse breaks.</p>
+                    </div>
+                </div>
+
+                <!-- Right Column: Template & Logs -->
+                <div class="lg:w-2/3 flex flex-col">
+                    <div class="mb-6">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Message Template</label>
+                        <div class="relative">
+                            <textarea id="wa_template" rows="6" class="w-full rounded-2xl border-gray-200 focus:ring-indigo-500 focus:border-indigo-500 text-sm p-4 glass" 
+                                placeholder="Hello {{customer_name}}, thank you for your order #{{order_id}}...">Hello {{customer_name}}! 👋
+
+Thank you for choosing us! We have received your order:
+*Order ID:* {{order_id}}
+You've Ordered:
+{{products}}
+Total Amount: {{total}}
+
+Please reply with:
+- *CONFIRM* to begin processing
+- *REJECT* to cancel this order
+
+Thanks!</textarea>
+                            <div class="absolute bottom-3 right-3 flex gap-2">
+                                <span class="bg-gray-100 text-gray-500 px-2 py-1 rounded text-[10px] mono-font cursor-help hover:bg-gray-200" title="Click to copy variable">{{customer_name}}</span>
+                                <span class="bg-gray-100 text-gray-500 px-2 py-1 rounded text-[10px] mono-font cursor-help hover:bg-gray-200" title="Click to copy variable">{{order_id}}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Logs -->
+                    <div class="flex-grow flex flex-col">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="block text-sm font-semibold text-gray-700">Live Execution Terminal</label>
+                            <button onclick="clearLogs()" class="text-[10px] text-gray-400 hover:text-indigo-600 uppercase tracking-tighter">Clear Logs</button>
+                        </div>
+                        <div id="wa_logs" class="bg-slate-900 rounded-2xl p-4 h-48 overflow-y-auto mono-font text-[11px] text-emerald-400/90 leading-relaxed shadow-inner">
+                            <div class="text-gray-500">Terminal ready. Awaiting broadcast...</div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6 flex items-center justify-between">
+                        <div id="broadcast_progress_ui" class="hidden flex-grow mr-4">
+                            <div class="flex justify-between text-[10px] text-gray-500 mb-1">
+                                <span id="progress_text">Progress: 0/0</span>
+                                <span id="progress_percent">0%</span>
+                            </div>
+                            <div class="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                <div id="progress_bar" class="bg-indigo-600 h-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="exportVCF()" class="px-6 py-3 bg-white border border-gray-200 text-gray-700 rounded-2xl text-sm font-bold hover:bg-gray-50 transition-all shadow-sm">
+                                📂 Export VCF
+                            </button>
+                            <button id="start_broadcast_btn" onclick="startWhatsAppBroadcast()" class="px-8 py-3 bg-indigo-600 text-white rounded-2xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 transform active:scale-95 disabled:opacity-50 disabled:active:scale-100">
+                                🚀 Start Premium Broadcast
+                            </button>
+                            <button id="pause_broadcast_btn" onclick="pauseBroadcast()" class="hidden px-8 py-3 bg-amber-500 text-white rounded-2xl text-sm font-bold hover:bg-amber-600 transition-all shadow-lg active:scale-95">
+                                ⏸️ Pause
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     {% if view == 'Reports' %}
@@ -729,11 +877,195 @@
                     <button type="button" onclick="closeEditModal()"
                         class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
                     <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Save
-                        Changes</button>
+                    Changes</button>
                 </div>
             </form>
         </div>
     </div>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
+    <script>
+        const socket = io('http://localhost:3001');
+        let waReady = false;
+        let currentSpeed = 'balanced';
+
+        // Socket Listeners
+        socket.on('qr', (qr) => {
+            const qrTarget = document.getElementById('wa_qrcode');
+            qrTarget.innerHTML = '';
+            new QRCode(qrTarget, {
+                text: qr,
+                width: 192,
+                height: 192,
+                colorDark: "#1e293b",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+            document.getElementById('wa_status_dot').className = 'w-3 h-3 rounded-full bg-amber-400';
+            addLog("QR Code generated. Please scan.");
+        });
+
+        socket.on('ready', () => {
+            waReady = true;
+            document.getElementById('wa_auth_panel').classList.add('hidden');
+            document.getElementById('wa_connected_panel').classList.remove('hidden');
+            document.getElementById('wa_status_dot').className = 'w-3 h-3 rounded-full bg-emerald-500 pulse-emerald';
+            addLog("WhatsApp Connected and Ready!");
+        });
+
+        socket.on('disconnected', (reason) => {
+            waReady = false;
+            document.getElementById('wa_auth_panel').classList.remove('hidden');
+            document.getElementById('wa_connected_panel').classList.add('hidden');
+            document.getElementById('wa_status_dot').className = 'w-3 h-3 rounded-full bg-gray-400';
+            addLog("WhatsApp Disconnected: " + (reason || "Unknown reason"));
+        });
+
+        socket.on('log', (msg) => addLog(msg));
+
+        socket.on('progress', (data) => {
+            const progressUI = document.getElementById('broadcast_progress_ui');
+            progressUI.classList.remove('hidden');
+            
+            const percent = Math.round((data.current / data.total) * 100);
+            document.getElementById('progress_bar').style.width = percent + '%';
+            document.getElementById('progress_percent').textContent = percent + '%';
+            document.getElementById('progress_text').textContent = `Progress: ${data.current}/${data.total}`;
+        });
+
+        socket.on('broadcast_complete', () => {
+            document.getElementById('start_broadcast_btn').disabled = false;
+            document.getElementById('pause_broadcast_btn').classList.add('hidden');
+            addLog("✨ Broadcast Session Finalized.");
+        });
+
+        // UI Helpers
+        function addLog(msg) {
+            const logs = document.getElementById('wa_logs');
+            const div = document.createElement('div');
+            div.className = 'log-entry mb-1 opacity-0';
+            div.innerHTML = `<span class="text-gray-500">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
+            logs.prepend(div);
+            // Limit logs
+            if (logs.children.length > 100) logs.lastChild.remove();
+        }
+
+        function clearLogs() {
+            document.getElementById('wa_logs').innerHTML = '<div class="text-gray-500">Terminal cleared.</div>';
+        }
+
+        function setSpeed(mode) {
+            currentSpeed = mode;
+            ['safe', 'balanced', 'fast'].forEach(m => {
+                const btn = document.getElementById('speed_' + m);
+                if (m === mode) {
+                    btn.className = "px-3 py-2 text-xs font-medium rounded-xl border-2 border-indigo-600 bg-indigo-50 text-indigo-700 transition-colors";
+                } else {
+                    btn.className = "px-3 py-2 text-xs font-medium rounded-xl border border-gray-200 hover:border-indigo-400 transition-colors";
+                }
+            });
+            
+            const desc = {
+                'safe': '🛡️ Max Security: 30-120s delay, frequent breaks. Best for new accounts.',
+                'balanced': '⚖️ Recommended: 15-45s delay with pulse breaks every 20 msgs.',
+                'fast': '🚀 Performance: 8-20s delay. Use only with established accounts.'
+            };
+            document.getElementById('speed_desc').textContent = desc[mode];
+        }
+
+        function startWhatsAppBroadcast() {
+            const checkboxes = document.querySelectorAll('.order-checkbox:checked');
+            if (checkboxes.length === 0) {
+                alert("Please select at least one order to broadcast.");
+                return;
+            }
+
+            if (!waReady) {
+                alert("Please link your WhatsApp account first.");
+                return;
+            }
+
+            const orders = [];
+            checkboxes.forEach(cb => {
+                // Get order data from the card
+                const card = cb.closest('.bg-white');
+                const id = cb.value;
+                const name = card.querySelector('.font-bold.text-gray-900').textContent;
+                const phone = card.querySelector('.text-blue-600').textContent.trim();
+                const total = card.querySelector('.text-lg.font-bold').textContent;
+                const products = card.querySelector('.text-gray-600.bg-gray-50').textContent.trim();
+                const address = card.querySelector('div:has(> .text-gray-400)').nextElementSibling.textContent.trim();
+
+                orders.push({ id, customer_name: name, phone, total, products, address });
+            });
+
+            const template = document.getElementById('wa_template').value;
+            const options = {
+                minDelay: currentSpeed === 'safe' ? 30000 : (currentSpeed === 'fast' ? 8000 : 15000),
+                maxDelay: currentSpeed === 'safe' ? 120000 : (currentSpeed === 'fast' ? 20000 : 45000),
+                pulseThreshold: currentSpeed === 'safe' ? 15 : (currentSpeed === 'fast' ? 40 : 25)
+            };
+
+            if (confirm(`Start premium broadcast to ${orders.length} orders?`)) {
+                socket.emit('start_broadcast', { orders, template, options });
+                document.getElementById('start_broadcast_btn').disabled = true;
+                document.getElementById('pause_broadcast_btn').classList.remove('hidden');
+                document.getElementById('broadcast_progress_ui').classList.remove('hidden');
+            }
+        }
+
+        function pauseBroadcast() {
+            socket.emit('pause_broadcast');
+            document.getElementById('pause_broadcast_btn').textContent = '▶️ Resume';
+            document.getElementById('pause_broadcast_btn').onclick = resumeBroadcast;
+        }
+
+        function resumeBroadcast() {
+            socket.emit('resume_broadcast');
+            document.getElementById('pause_broadcast_btn').textContent = '⏸️ Pause';
+            document.getElementById('pause_broadcast_btn').onclick = pauseBroadcast;
+        }
+
+        async function disconnectWhatsApp() {
+            if (confirm("Disconnect this WhatsApp session?")) {
+                socket.emit('disconnect_whatsapp');
+            }
+        }
+
+        function exportVCF() {
+            const checkboxes = document.querySelectorAll('.order-checkbox:checked');
+            if (checkboxes.length === 0) {
+                alert("Please select orders to export.");
+                return;
+            }
+
+            let vcfContent = "";
+            checkboxes.forEach(cb => {
+                const card = cb.closest('.bg-white');
+                const id = cb.value;
+                const name = card.querySelector('.font-bold.text-gray-900').textContent;
+                const phone = card.querySelector('.text-blue-600').textContent.trim().replace(/\D/g, '');
+                
+                // Use Order ID in the name for safety as requested
+                const contactName = `ORD-${id} ${name}`;
+                
+                vcfContent += "BEGIN:VCARD\n";
+                vcfContent += "VERSION:3.0\n";
+                vcfContent += `FN:${contactName}\n`;
+                vcfContent += `TEL;TYPE=CELL:${phone}\n`;
+                vcfContent += "END:VCARD\n";
+            });
+
+            const blob = new Blob([vcfContent], { type: "text/vcard" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `WA_Contacts_${new Date().toISOString().split('T')[0]}.vcf`;
+            a.click();
+            URL.revokeObjectURL(url);
+            addLog("VCF Exported for selected contacts.");
+        }
+    </script>
 </body>
 
 </html>
