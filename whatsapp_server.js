@@ -168,11 +168,16 @@ io.on('connection', (socket) => {
             
             // Replace template variables
             let message = template;
-            message = message.replace(/{{order_id}}/gi, order.id);
-            message = message.replace(/{{customer_name}}/gi, order.customer_name);
-            message = message.replace(/{{total}}/gi, order.total);
-            message = message.replace(/{{products}}/gi, order.products);
-            message = message.replace(/{{address}}/gi, order.address);
+            message = message.replace(/{{order_id}}/gi, order.id || '');
+            message = message.replace(/{{customer_name}}/gi, order.customer_name || '');
+            message = message.replace(/{{total}}/gi, order.total || '0');
+            message = message.replace(/{{products}}/gi, order.products || '');
+            message = message.replace(/{{address}}/gi, order.address || '');
+            message = message.replace(/{{city}}/gi, order.city || '');
+            message = message.replace(/{{state}}/gi, order.state || '');
+            message = message.replace(/{{payment}}/gi, order.payment_method || '');
+            message = message.replace(/{{delivery}}/gi, order.delivery_type || '');
+            message = message.replace(/{{order_status}}/gi, order.status || '');
 
             try {
                 // Typing simulation

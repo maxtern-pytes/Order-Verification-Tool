@@ -1,9 +1,12 @@
 #!/bin/bash
 
 # --- Position Independent Detection ---
-# Get the absolute path of the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR"
+if [ ! -f "$SCRIPT_DIR/app.py" ]; then
+    echo "Warning: start.sh is not in the project root. Searching..."
+    SCRIPT_DIR=$(find /tmp /home -name "app.py" -exec dirname {} \; -quit 2>/dev/null | head -n 1)
+fi
+cd "$SCRIPT_DIR" || exit 1
 
 # Check if Node.js is available, if not, try to install it locally
 if ! command -v node >/dev/null 2>&1; then
