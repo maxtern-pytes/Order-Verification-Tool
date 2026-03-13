@@ -1,4 +1,24 @@
 #!/bin/bash
+# Check if Node.js is available, if not, try to install it locally
+if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js not found. Attempting to install portable Node.js..."
+    NODE_VERSION="v20.11.1"
+    NODE_DIST="node-$NODE_VERSION-linux-x64"
+    
+    # Download and extract in /home (persisted area)
+    mkdir -p /home/site/node
+    if [ ! -f "/home/site/node/$NODE_DIST/bin/node" ]; then
+        echo "Downloading Node.js $NODE_VERSION..."
+        curl -sL "https://nodejs.org/dist/$NODE_VERSION/$NODE_DIST.tar.gz" -o "/home/site/node/node.tar.gz"
+        tar -xzf "/home/site/node/node.tar.gz" -C "/home/site/node"
+        rm "/home/site/node/node.tar.gz"
+    fi
+    
+    # Add to PATH
+    export PATH="/home/site/node/$NODE_DIST/bin:$PATH"
+    echo "Portable Node.js installed to PATH: $(node -v)"
+fi
+
 # Diagnostic logging
 echo "--- Environment Diagnostics ---"
 echo "Current User: $(whoami)"
@@ -8,12 +28,10 @@ echo "Node Version: $(node -v 2>/dev/null || echo 'Not Found')"
 echo "NPM Version: $(npm -v 2>/dev/null || echo 'Not Found')"
 echo "--- Starting Services ---"
 
-# Install Node.js dependencies if package.json exists and Node is available
-if [ -f "package.json" ] && command -v npm >/dev/null 2>&1; then
+# Install Node.js dependencies
+if [ -f "package.json" ]; then
     echo "Installing Node.js dependencies..."
     npm install
-elif [ -f "package.json" ]; then
-    echo "WARNING: package.json found but Node/NPM not installed in this environment!"
 fi
 
 # Start the Flask app in the background on port 5000
