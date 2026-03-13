@@ -44,7 +44,7 @@ const client = new Client({
     }),
     puppeteer: {
         headless: true,
-        // Azure/Linux pathing and stability flags
+        // PRIORITY: Use the path found by start.sh
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
         args: [
             '--no-sandbox',

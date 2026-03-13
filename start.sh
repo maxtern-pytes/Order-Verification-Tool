@@ -11,8 +11,7 @@ cd "$SCRIPT_DIR" || exit 1
 # --- Disk Audit for Debugging ---
 echo "--- Disk Audit ---"
 echo "Current Root: $SCRIPT_DIR"
-ls -F .puppeteer_cache 2>/dev/null || echo ".puppeteer_cache not found as folder"
-find . -maxdepth 3 -name ".puppeteer_cache" -type d
+find /tmp -maxdepth 2 -name "*puppeteer*" -type d 2>/dev/null || echo "No puppeteer folders in /tmp"
 echo "----------------"
 
 # Check if Node.js is available, if not, try to install it locally
@@ -57,9 +56,9 @@ if [ -f "package.json" ]; then
     echo "Installing Node.js dependencies..."
     npm install
     
-    # Detect/Install Puppeteer Browser
-    export PUPPETEER_CACHE_DIR="$SCRIPT_DIR/.puppeteer_cache"
-    echo "Configuring Puppeteer Cache: $PUPPETEER_CACHE_DIR"
+    # FORCED: Use /tmp for Puppeteer Cache (more reliable on Azure Linux)
+    export PUPPETEER_CACHE_DIR="/tmp/puppeteer_cache"
+    echo "Forcing Puppeteer Cache to: $PUPPETEER_CACHE_DIR"
     mkdir -p "$PUPPETEER_CACHE_DIR"
     chmod -R 777 "$PUPPETEER_CACHE_DIR"
     
@@ -97,13 +96,14 @@ echo "Starting Flask on port 5000..."
 gunicorn --bind=127.0.0.1:5000 --timeout 600 --workers 1 --threads 4 app:app &
 
 # Start the WhatsApp Node server as the main process (listens on $PORT)
-if [ -n "$PUPPETEER_EXECUTABLE_PATH" ]; then
-    echo "Starting WhatsApp Broadcast Service on Azure Port $PORT..."
+if [ -n "$PUPPETEER_EXECUTABLE_PATH" ] && [ -f "$PUPPETEER_EXECUTABLE_PATH" ]; then
+    echo "Starting WhatsApp Broadcast Service with Chrome: $PUPPETEER_EXECUTABLE_PATH"
     node whatsapp_server.js
 else
-    echo "ERROR: Chrome not found. Emergency runtime install attempt..."
+    echo "CRITICAL: No Chrome found in /tmp. Final emergency attempt..."
+    # If Node version is problematic, we might need a specific install here
     npx puppeteer browsers install chrome
-    CHROME_PATH=$(find "$SCRIPT_DIR" -name "chrome" -type f -executable | head -n 1)
+    CHROME_PATH=$(find /tmp/puppeteer_cache -name "chrome" -type f -executable | head -n 1)
     export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
     node whatsapp_server.js
 fi
