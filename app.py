@@ -548,7 +548,7 @@ def get_orders(status_filter='Pending', start_date=None, end_date=None, search_q
     
     # Get paginated data
     offset = (page - 1) * per_page
-    query = f'SELECT * FROM orders WHERE {where_clause} ORDER BY timestamp DESC LIMIT %s OFFSET %s'
+    query = f'SELECT * FROM orders WHERE {where_clause} ORDER BY length(id) DESC, id DESC LIMIT %s OFFSET %s'
     c.execute(query, params + [per_page, offset])
     orders = c.fetchall()
     
@@ -818,7 +818,7 @@ def viewer_dashboard():
         query += ' AND (customer_name ILIKE %s OR phone ILIKE %s OR email ILIKE %s)'
         params.extend([f'%{search}%', f'%{search}%', f'%{search}%'])
     
-    query += ' ORDER BY timestamp DESC'
+    query += ' ORDER BY length(id) DESC, id DESC'
     c.execute(query, params)
     orders = c.fetchall()
     conn.close()
@@ -900,7 +900,7 @@ def viewer_packed():
     c.execute('''
         SELECT * FROM orders 
         WHERE status = 'Confirmed' AND is_packed = TRUE 
-        ORDER BY timestamp DESC
+        ORDER BY length(id) DESC, id DESC
     ''')
     orders = c.fetchall()
     conn.close()
@@ -927,7 +927,7 @@ def export_packed():
     c.execute('''
         SELECT * FROM orders 
         WHERE status = 'Confirmed' AND is_packed = TRUE 
-        ORDER BY timestamp DESC
+        ORDER BY length(id) DESC, id DESC
     ''')
     orders = c.fetchall()
     conn.close()
@@ -981,7 +981,7 @@ def get_orders_for_export(start_date, end_date, status=None, delivery_type=None)
         query += " AND delivery_type = %s"
         params.append(delivery_type)
         
-    query += " ORDER BY timestamp DESC"
+    query += " ORDER BY length(id) DESC, id DESC"
     c.execute(query, tuple(params))
     return c.fetchall()
 
@@ -996,7 +996,7 @@ def export_confirmed():
     c.execute('''
         SELECT * FROM orders 
         WHERE status = 'Confirmed' AND (is_packed = FALSE OR is_packed IS NULL)
-        ORDER BY timestamp DESC
+        ORDER BY length(id) DESC, id DESC
     ''')
     orders = c.fetchall()
     conn.close()
