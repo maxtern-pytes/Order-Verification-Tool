@@ -48,7 +48,8 @@ let isReady = false;
 let broadcastPaused = false;
 
 // Store setup for history (optional but good for tracking)
-const store = makeInMemoryStore({ logger });
+// Store will be initialized after Baileys is loaded
+let store;
 
 async function connectToWhatsApp() {
     if (!Baileys) await loadBaileys();
@@ -61,6 +62,8 @@ async function connectToWhatsApp() {
         makeInMemoryStore,
         Browsers
     } = Baileys;
+
+    if (!store) store = makeInMemoryStore({ logger });
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_PATH);
     const { version } = await fetchLatestBaileysVersion();
