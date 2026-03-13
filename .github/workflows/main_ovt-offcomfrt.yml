@@ -35,6 +35,9 @@ jobs:
           source antenv/bin/activate
           pip install -r requirements.txt
           npm install
+          # NEW: Pre-install Puppeteer browser in the artifact
+          export PUPPETEER_CACHE_DIR=$GITHUB_WORKSPACE/.puppeteer_cache
+          npx puppeteer browsers install chrome
                 
       # By default, when you enable GitHub CI/CD integration through the Azure portal, the platform automatically sets the SCM_DO_BUILD_DURING_DEPLOYMENT application setting to true. This triggers the use of Oryx, a build engine that handles application compilation and dependency installation (e.g., pip install) directly on the platform during deployment. Hence, we exclude the antenv virtual environment directory from the deployment artifact to reduce the payload size. 
       - name: Upload artifact for deployment jobs

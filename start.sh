@@ -43,10 +43,15 @@ if [ -f "package.json" ]; then
     echo "Installing Node.js dependencies..."
     npm install
     
-    # NEW: Install Puppeteer Browser
-    echo "Installing Puppeteer browser dependencies..."
+    # Detect Pre-bundled or Runtime Browser
     export PUPPETEER_CACHE_DIR="$SCRIPT_DIR/.puppeteer_cache"
-    npx puppeteer browsers install chrome
+    
+    if [ ! -d "$PUPPETEER_CACHE_DIR" ]; then
+        echo "Pre-bundled browser not found. Attempting runtime installation..."
+        npx puppeteer browsers install chrome
+    else
+        echo "Using pre-bundled Puppeteer browser..."
+    fi
     
     # Get the executable path automatically
     export PUPPETEER_EXECUTABLE_PATH=$(npx puppeteer browsers find chrome | grep -i "executable path" | awk '{print $4}')
