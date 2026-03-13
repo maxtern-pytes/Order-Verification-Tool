@@ -1,1 +1,1 @@
-web: bash /home/site/wwwroot/start.sh
+web: bash start.sh

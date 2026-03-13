@@ -1,4 +1,10 @@
 #!/bin/bash
+
+# --- Position Independent Detection ---
+# Get the absolute path of the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
 # Check if Node.js is available, if not, try to install it locally
 if ! command -v node >/dev/null 2>&1; then
     echo "Node.js not found. Attempting to install portable Node.js..."
@@ -19,8 +25,9 @@ if ! command -v node >/dev/null 2>&1; then
     echo "Portable Node.js installed to PATH: $(node -v)"
 fi
 
-# Diagnostic logging
-echo "--- Environment Diagnostics ---"
+echo "=== Azure Multi-Service Bootloader ==="
+echo "Script Directory: $SCRIPT_DIR"
+echo "Current Directory: $(pwd)"
 echo "Current User: $(whoami)"
 echo "Current Directory: $(pwd)"
 echo "Python Version: $(python --version)"
