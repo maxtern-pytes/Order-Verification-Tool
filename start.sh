@@ -35,8 +35,10 @@ echo "Current User: $(whoami)"
 
 # --- Process Cleanup ---
 echo "Cleaning up existing services..."
-pkill -f gunicorn || true
-pkill -f node || true
+# Aggressively kill anything on port 5000 (Flask)
+fuser -k 5000/tcp 2>/dev/null || true
+pkill -9 -f gunicorn || true
+pkill -9 -f node || true
 sleep 2
 
 # --- Dependency Setup ---
@@ -50,24 +52,35 @@ if [ -f "package.json" ]; then
     
     # Detect/Install Puppeteer Browser
     export PUPPETEER_CACHE_DIR="$SCRIPT_DIR/.puppeteer_cache"
-    echo "Puppeteer Cache: $PUPPETEER_CACHE_DIR"
+    echo "Configuring Puppeteer Cache: $PUPPETEER_CACHE_DIR"
+    mkdir -p "$PUPPETEER_CACHE_DIR"
+    chmod -R 777 "$PUPPETEER_CACHE_DIR"
     
-    if [ ! -d "$PUPPETEER_CACHE_DIR" ]; then
-        echo "Installing Chrome browser..."
-        npx puppeteer browsers install chrome
-    fi
-    
-    # Aggressive Discovery
-    echo "Searching for Chrome binary..."
+    # Try discovery phase
+    echo "Checking for existing Chrome..."
     CHROME_PATH=$(npx puppeteer browsers find chrome | grep -i "executable path" | awk '{print $4}' | head -n 1)
     
-    if [ -z "$CHROME_PATH" ]; then
-         echo "Manual search for chrome..."
+    if [ -z "$CHROME_PATH" ] || [ ! -f "$CHROME_PATH" ]; then
+        echo "Chrome not found or invalid. Installing..."
+        npx puppeteer browsers install chrome
+        # Re-search
+        CHROME_PATH=$(npx puppeteer browsers find chrome | grep -i "executable path" | awk '{print $4}' | head -n 1)
+    fi
+    
+    # Fallback to Manual Find
+    if [ -z "$CHROME_PATH" ] || [ ! -f "$CHROME_PATH" ]; then
+         echo "Standard discovery failed. Performing manual deep search..."
          CHROME_PATH=$(find "$PUPPETEER_CACHE_DIR" -name "chrome" -type f -executable | head -n 1)
     fi
     
-    export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
-    echo "Final Chrome Path: $PUPPETEER_EXECUTABLE_PATH"
+    if [ -n "$CHROME_PATH" ]; then
+        export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
+        echo "Final Chrome Path: $PUPPETEER_EXECUTABLE_PATH"
+        # Verify execution permission
+        chmod +x "$PUPPETEER_EXECUTABLE_PATH"
+    else
+        echo "WARNING: All Chrome discovery methods failed."
+    fi
 fi
 
 echo "--- Starting Services ---"
@@ -81,7 +94,9 @@ if [ -n "$PUPPETEER_EXECUTABLE_PATH" ]; then
     echo "Starting WhatsApp Broadcast Service on Azure Port $PORT..."
     node whatsapp_server.js
 else
-    echo "ERROR: Chrome not found. Attempting emergency install..."
-    npx puppeteer browsers install chrome --install-deps
+    echo "ERROR: Chrome not found. Emergency runtime install attempt..."
+    npx puppeteer browsers install chrome
+    CHROME_PATH=$(find "$SCRIPT_DIR" -name "chrome" -type f -executable | head -n 1)
+    export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
     node whatsapp_server.js
 fi
