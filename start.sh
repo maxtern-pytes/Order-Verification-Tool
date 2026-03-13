@@ -8,6 +8,13 @@ if [ ! -f "$SCRIPT_DIR/app.py" ]; then
 fi
 cd "$SCRIPT_DIR" || exit 1
 
+# --- Disk Audit for Debugging ---
+echo "--- Disk Audit ---"
+echo "Current Root: $SCRIPT_DIR"
+ls -F .puppeteer_cache 2>/dev/null || echo ".puppeteer_cache not found as folder"
+find . -maxdepth 3 -name ".puppeteer_cache" -type d
+echo "----------------"
+
 # Check if Node.js is available, if not, try to install it locally
 if ! command -v node >/dev/null 2>&1; then
     echo "Node.js not found. Attempting to install portable Node.js..."
