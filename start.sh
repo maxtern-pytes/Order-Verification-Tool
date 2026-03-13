@@ -56,54 +56,46 @@ if [ -f "package.json" ]; then
     echo "Installing Node.js dependencies..."
     npm install
     
-    # FORCED: Use /tmp for Puppeteer Cache (more reliable on Azure Linux)
-    export PUPPETEER_CACHE_DIR="/tmp/puppeteer_cache"
-    echo "Forcing Puppeteer Cache to: $PUPPETEER_CACHE_DIR"
-    mkdir -p "$PUPPETEER_CACHE_DIR"
-    chmod -R 777 "$PUPPETEER_CACHE_DIR"
+    # Standalone Browser Strategy (Safe for Azure)
+    BROWSER_DIR="/home/site/wwwroot/browser"
+    export PUPPETEER_EXECUTABLE_PATH="$BROWSER_DIR/chrome-linux/chrome"
     
-    # Try discovery phase
-    echo "Checking for existing Chrome..."
-    CHROME_PATH=$(npx puppeteer browsers find chrome | grep -i "executable path" | awk '{print $4}' | head -n 1)
-    
-    if [ -z "$CHROME_PATH" ] || [ ! -f "$CHROME_PATH" ]; then
-        echo "Chrome not found or invalid. Installing..."
-        npx puppeteer browsers install chrome
-        # Re-search
-        CHROME_PATH=$(npx puppeteer browsers find chrome | grep -i "executable path" | awk '{print $4}' | head -n 1)
-    fi
-    
-    # Fallback to Manual Find
-    if [ -z "$CHROME_PATH" ] || [ ! -f "$CHROME_PATH" ]; then
-         echo "Standard discovery failed. Performing manual deep search..."
-         CHROME_PATH=$(find "$PUPPETEER_CACHE_DIR" -name "chrome" -type f -executable | head -n 1)
-    fi
-    
-    if [ -n "$CHROME_PATH" ]; then
-        export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
-        echo "Final Chrome Path: $PUPPETEER_EXECUTABLE_PATH"
-        # Verify execution permission
+    if [ ! -f "$PUPPETEER_EXECUTABLE_PATH" ]; then
+        echo "Standalone browser missing. Performing high-reliability download..."
+        mkdir -p "$BROWSER_DIR"
+        cd "$BROWSER_DIR" || exit
+        # Using a known stable portable Chromium version
+        curl -sL "https://storage.googleapis.com/chromium-browser-snapshots/Linux_x64/1183188/chrome-linux.zip" -o chrome.zip
+        if command -v unzip >/dev/null 2>&1; then
+            unzip -q chrome.zip
+        else
+            python3 -m zipfile -e chrome.zip .
+        fi
+        rm chrome.zip
         chmod +x "$PUPPETEER_EXECUTABLE_PATH"
-    else
-        echo "WARNING: All Chrome discovery methods failed."
+        cd "$SCRIPT_DIR" || exit
+    fi
+    
+    echo "Final Chrome Path: $PUPPETEER_EXECUTABLE_PATH"
+    
+    # Quick Dependency Test
+    if [ -f "$PUPPETEER_EXECUTABLE_PATH" ]; then
+        echo "Testing browser binary..."
+        "$PUPPETEER_EXECUTABLE_PATH" --version || echo "Warning: Browser binary exists but might lack library dependencies."
     fi
 fi
 
 echo "--- Starting Services ---"
 
-# Start the Flask app in the background on port 5000
+# Start the Flask app (Removed control socket to avoid permission errors)
 echo "Starting Flask on port 5000..."
 gunicorn --bind=127.0.0.1:5000 --timeout 600 --workers 1 --threads 4 app:app &
 
-# Start the WhatsApp Node server as the main process (listens on $PORT)
-if [ -n "$PUPPETEER_EXECUTABLE_PATH" ] && [ -f "$PUPPETEER_EXECUTABLE_PATH" ]; then
-    echo "Starting WhatsApp Broadcast Service with Chrome: $PUPPETEER_EXECUTABLE_PATH"
+# Start the WhatsApp Node server
+if [ -f "$PUPPETEER_EXECUTABLE_PATH" ]; then
+    echo "Starting WhatsApp Broadcast Service with Portable Chrome..."
     node whatsapp_server.js
 else
-    echo "CRITICAL: No Chrome found in /tmp. Final emergency attempt..."
-    # If Node version is problematic, we might need a specific install here
-    npx puppeteer browsers install chrome
-    CHROME_PATH=$(find /tmp/puppeteer_cache -name "chrome" -type f -executable | head -n 1)
-    export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
+    echo "CRITICAL: Browser setup failed. Falling back to default launch..."
     node whatsapp_server.js
 fi
