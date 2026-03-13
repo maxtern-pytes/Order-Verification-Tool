@@ -6,6 +6,7 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { Pool } = require('pg');
 const path = require('path');
+const proxy = require('express-http-proxy');
 
 const app = express();
 const server = http.createServer(app);
@@ -15,6 +16,16 @@ const io = new Server(server, {
         methods: ["GET", "POST"]
     }
 });
+
+// Proxy all requests to Flask (local port 5000) except for Socket.io
+app.use('/', proxy('http://localhost:5000', {
+    filter: (req, res) => {
+        // Socket.io handles its own traffic via the server instance
+        return !req.url.startsWith('/socket.io');
+    },
+    proxyReqPathResolver: (req) => req.url,
+    limit: '50mb' // Handle large uploads/exports
+}));
 
 app.use(express.json());
 
@@ -220,7 +231,7 @@ io.on('connection', (socket) => {
 // Start Client
 client.initialize();
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
     console.log(`WhatsApp Server running on port ${PORT}`);
 });

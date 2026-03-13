@@ -13,6 +13,7 @@
     "pg": "^8.11.5",
     "qrcode-terminal": "^0.12.0",
     "socket.io": "^4.7.5",
-    "whatsapp-web.js": "^1.26.0"
+    "whatsapp-web.js": "^1.26.0",
+    "express-http-proxy": "^2.0.0"
   }
 }

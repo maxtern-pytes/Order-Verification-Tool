@@ -6,10 +6,10 @@ if [ -f "package.json" ]; then
     npm install
 fi
 
-# Start the WhatsApp Node server in the background
-echo "Starting WhatsApp Broadcast Service..."
-node whatsapp_server.js &
+# Start the Flask app in the background on port 5000
+echo "Starting Flask Order Management System on port 5000..."
+gunicorn --bind=127.0.0.1:5000 --timeout 600 app:app &
 
-# Start the Flask app as the main process
-echo "Starting Flask Order Management System..."
-gunicorn --bind=0.0.0.0 --timeout 600 app:app
+# Start the WhatsApp Node server as the main process (listens on $PORT)
+echo "Starting WhatsApp Broadcast Service on Azure Port..."
+node whatsapp_server.js
