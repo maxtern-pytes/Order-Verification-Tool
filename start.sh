@@ -41,11 +41,14 @@ echo "Current User: $(whoami)"
 
 # --- Process Cleanup ---
 echo "Cleaning up existing services..."
-# Aggressively kill anything on port 5000 (Flask)
+# Aggressively kill anything on port 5000 (Flask) and 8000 (Node)
 fuser -k 5000/tcp 2>/dev/null || true
+fuser -k 8000/tcp 2>/dev/null || true
 pkill -9 -f gunicorn || true
 pkill -9 -f node || true
-sleep 2
+pkill -9 -f chrome || true
+pkill -9 -f puppeteer || true
+sleep 5
 
 # --- Dependency Setup ---
 echo "Python Version: $(python --version)"

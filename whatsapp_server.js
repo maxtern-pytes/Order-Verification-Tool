@@ -4,14 +4,6 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { Pool } = require('pg');
 const proxy = require('express-http-proxy');
-const { 
-    default: makeWASocket, 
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    fetchLatestBaileysVersion,
-    makeInMemoryStore,
-    Browsers
-} = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const QRCode = require('qrcode');
 const path = require('path');
@@ -20,11 +12,14 @@ const fs = require('fs');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
+    cors: { origin: "*", methods: ["GET", "POST"] }
 });
+
+// Dynamic Import for Baileys (ESM Package)
+let Baileys;
+async function loadBaileys() {
+    Baileys = await import('@whiskeysockets/baileys');
+}
 
 // Logger Setup
 const logger = pino({ level: 'info' });
@@ -56,6 +51,17 @@ let broadcastPaused = false;
 const store = makeInMemoryStore({ logger });
 
 async function connectToWhatsApp() {
+    if (!Baileys) await loadBaileys();
+    
+    const { 
+        default: makeWASocket, 
+        useMultiFileAuthState, 
+        DisconnectReason, 
+        fetchLatestBaileysVersion,
+        makeInMemoryStore,
+        Browsers
+    } = Baileys;
+
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_PATH);
     const { version } = await fetchLatestBaileysVersion();
 
