@@ -53,9 +53,11 @@ echo "Node Version: $(node -v 2>/dev/null || echo 'Not Found')"
 
 # Try to install missing system libraries (Safe since we are root)
 if [ "$(whoami)" = "root" ]; then
-    echo "Azure User is root. Installing missing system libraries..."
+    echo "Azure User is root. Installing system libraries..."
     apt-get update -qq
-    apt-get install -y -qq libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 || echo "Warning: apt-get failed. Some libraries might be missing."
+    # Try multiple versions of libasound2 just in case
+    apt-get install -y -qq libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 || true
+    apt-get install -y -qq libasound2 || apt-get install -y -qq libasound2t64 || echo "Warning: Could not install libasound2 variation."
 fi
 
 # Install Node.js dependencies
@@ -89,7 +91,6 @@ if [ -f "package.json" ]; then
             echo "Extraction complete."
         else
             echo "CRITICAL: Download failed (empty file). Reverting to local project search..."
-            # Try to find any existing chrome in the app folder
             CHROME_PATH=$(find "$SCRIPT_DIR" -name "chrome" -type f -executable | head -n 1)
             export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
         fi
@@ -97,14 +98,20 @@ if [ -f "package.json" ]; then
     fi
     
     echo "Final Chrome Path: $PUPPETEER_EXECUTABLE_PATH"
+    
+    # --- Dependency Audit ---
+    if [ -f "$PUPPETEER_EXECUTABLE_PATH" ]; then
+        echo "Running Chrome Dependency Audit (ldd)..."
+        ldd "$PUPPETEER_EXECUTABLE_PATH" | grep "not found" || echo "All libraries linked successfully."
+    fi
 fi
 
 echo "--- Starting Services ---"
 
-# Start the Flask app with maximum stability (removed control socket completely)
+# Start the Flask app with absolute stability (force socket to /tmp to bypass site-root locks)
 echo "Starting Flask on port 5000..."
-# Using sync worker and no control socket to stay within Azure permission limits
-gunicorn --bind=0.0.0.0:5000 --timeout 600 --workers 1 --worker-class sync --worker-tmp-dir /dev/shm --log-file - --error-log - app:app &
+# Using --worker-tmp-dir /dev/shm and a clean socket path to bypass Azure permission errors
+gunicorn --bind=0.0.0.0:5000 --timeout 600 --workers 1 --worker-class sync --worker-tmp-dir /dev/shm --log-file - --error-log - --pid /tmp/gunicorn.pid app:app &
 
 # Start the WhatsApp Node server
 if [ -n "$PUPPETEER_EXECUTABLE_PATH" ] && [ -f "$PUPPETEER_EXECUTABLE_PATH" ]; then
