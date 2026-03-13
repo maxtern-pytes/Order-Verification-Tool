@@ -51,80 +51,23 @@ sleep 2
 echo "Python Version: $(python --version)"
 echo "Node Version: $(node -v 2>/dev/null || echo 'Not Found')"
 
-# Try to install missing system libraries (Safe since we are root)
-if [ "$(whoami)" = "root" ]; then
-    echo "Azure User is root. Installing system libraries..."
-    apt-get update -qq
-    # Try multiple versions of libasound2 just in case
-    apt-get install -y -qq libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 || true
-    apt-get install -y -qq libasound2 || apt-get install -y -qq libasound2t64 || echo "Warning: Could not install libasound2 variation."
-fi
-
 # Install Node.js dependencies
 if [ -f "package.json" ]; then
     echo "Installing Node.js dependencies..."
     npm install
-    
-    # PERSISTENT Browser Strategy for Azure (outside ephemeral mounts)
-    BROWSER_BASE="/home/site/browser"
-    export PUPPETEER_EXECUTABLE_PATH="$BROWSER_BASE/chrome-linux64/chrome"
-    
-    if [ ! -f "$PUPPETEER_EXECUTABLE_PATH" ]; then
-        echo "Persistent browser missing. Performing one-time high-reliability download..."
-        mkdir -p "$BROWSER_BASE"
-        cd "$BROWSER_BASE" || exit
-        
-        # Using a reliable stable Chrome for Testing binary (v122)
-        CHROME_URL="https://storage.googleapis.com/chrome-for-testing-public/122.0.6261.94/linux64/chrome-linux64.zip"
-        echo "Downloading Chrome from: $CHROME_URL"
-        curl -sL "$CHROME_URL" -o chrome.zip
-        
-        if [ -s chrome.zip ]; then
-            echo "Download successful. Extracting..."
-            if command -v unzip >/dev/null 2>&1; then
-                unzip -q chrome.zip
-            else
-                python3 -m zipfile -e chrome.zip .
-            fi
-            rm chrome.zip
-            chmod +x "$PUPPETEER_EXECUTABLE_PATH"
-            echo "Extraction complete."
-        else
-            echo "CRITICAL: Download failed (empty file). Reverting to local project search..."
-            CHROME_PATH=$(find "$SCRIPT_DIR" -name "chrome" -type f -executable | head -n 1)
-            export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
-        fi
-        cd "$SCRIPT_DIR" || exit
-    fi
-    
-    echo "Final Chrome Path: $PUPPETEER_EXECUTABLE_PATH"
-    
-    # --- Dependency Audit ---
-    if [ -f "$PUPPETEER_EXECUTABLE_PATH" ]; then
-        echo "Running Chrome Dependency Audit (ldd)..."
-        ldd "$PUPPETEER_EXECUTABLE_PATH" | grep "not found" || echo "All libraries linked successfully."
-    fi
 fi
+
+# Set Baileys Authentication Path (Persistent on Azure)
+export WHATSAPP_AUTH_PATH="/home/site/whatsapp_auth"
+mkdir -p "$WHATSAPP_AUTH_PATH"
 
 echo "--- Starting Services ---"
 
-# Start the Flask app with absolute stability (force socket to /tmp to bypass site-root locks)
+# Start the Flask app with absolute stability
 echo "Starting Flask on port 5000..."
-# Using --worker-tmp-dir /dev/shm and a clean socket path to bypass Azure permission errors
+# Using --worker-tmp-dir /dev/shm and avoiding control sockets for Azure compatibility
 gunicorn --bind=0.0.0.0:5000 --timeout 600 --workers 1 --worker-class sync --worker-tmp-dir /dev/shm --log-file - --error-log - --pid /tmp/gunicorn.pid app:app &
 
-# Start the WhatsApp Node server
-if [ -n "$PUPPETEER_EXECUTABLE_PATH" ] && [ -f "$PUPPETEER_EXECUTABLE_PATH" ]; then
-    echo "Starting WhatsApp Broadcast Service with Verified Chrome..."
-    node whatsapp_server.js
-else
-    echo "CRITICAL: Browser setup failed. Final search attempt..."
-    CHROME_PATH=$(find /home/site -name "chrome" -type f -executable | head -n 1)
-    if [ -n "$CHROME_PATH" ]; then
-        export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
-        node whatsapp_server.js
-    else
-        echo "FAILED: No Chrome found anywhere."
-        node whatsapp_server.js
-    fi
-fi
+# Start the WhatsApp Node server (Baileys - No Browser Needed!)
+echo "Starting WhatsApp Baileys Service..."
+node whatsapp_server.js
