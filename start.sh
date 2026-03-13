@@ -68,8 +68,10 @@ echo "--- Starting Services ---"
 
 # Start the Flask app with absolute stability
 echo "Starting Flask on port 5000..."
-# Using --worker-tmp-dir /dev/shm and explicitly moving the control socket to /tmp to avoid permission errors
-gunicorn --bind=0.0.0.0:5000 --timeout 600 --workers 1 --worker-class sync --worker-tmp-dir /dev/shm --log-file - --error-log - --pid /tmp/gunicorn.pid --worker-tmp-dir /dev/shm app:app &
+# Hard-disabling the control socket by specifying a dummy or tmp path manually if supported, 
+# or just sticking to worker-tmp-dir. Adding --statsd-host if needed to bypass control socket logic.
+# Actually, Gunicorn 20+ tries to create a socket in the CWD if not specified.
+gunicorn --bind=0.0.0.0:5000 --timeout 600 --workers 1 --worker-class sync --worker-tmp-dir /dev/shm --log-file - --error-log - --pid /tmp/gunicorn.pid app:app &
 
 # Start the WhatsApp Node server (Baileys - No Browser Needed!)
 echo "Starting WhatsApp Baileys Service..."

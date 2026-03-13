@@ -54,6 +54,10 @@ let store;
 async function connectToWhatsApp() {
     if (!Baileys) await loadBaileys();
     
+    // Debug: Log exports if things fail
+    const exports = Object.keys(Baileys);
+    console.log('Baileys Exports Loaded:', exports.join(', '));
+    
     const { 
         default: makeWASocket, 
         useMultiFileAuthState, 
@@ -63,21 +67,31 @@ async function connectToWhatsApp() {
         Browsers
     } = Baileys;
 
-    if (!store) store = makeInMemoryStore({ logger });
+    // Fallback for different bundling styles
+    const effectiveMakeWASocket = makeWASocket || Baileys.makeWASocket;
+    const effectiveMakeInMemoryStore = makeInMemoryStore || Baileys.makeInMemoryStore;
+
+    if (!store) {
+        if (typeof effectiveMakeInMemoryStore === 'function') {
+            store = effectiveMakeInMemoryStore({ logger });
+        } else {
+            console.warn('Warning: makeInMemoryStore not found in exports. History tracking disabled.');
+        }
+    }
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_PATH);
     const { version } = await fetchLatestBaileysVersion();
 
-    sock = makeWASocket({
+    sock = effectiveMakeWASocket({
         version,
         printQRInTerminal: true,
         auth: state,
         logger,
-        browser: Browsers.macOS('Desktop'), // Identity for WhatsApp
+        browser: Browsers ? Browsers.macOS('Desktop') : ['Ubuntu', 'Chrome', '20.0.04'],
         syncFullHistory: false
     });
 
-    store.bind(sock.ev);
+    if (store) store.bind(sock.ev);
 
     sock.ev.on('creds.update', saveCreds);
 
