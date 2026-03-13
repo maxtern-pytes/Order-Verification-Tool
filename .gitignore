@@ -1,0 +1,8 @@
+node_modules/
+.env
+.wwebjs_auth/
+__pycache__/
+*.pyc
+.DS_Store
+*.vcf
+/tmp/
