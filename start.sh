@@ -56,53 +56,52 @@ if [ -f "package.json" ]; then
     echo "Installing Node.js dependencies..."
     npm install
     
-    # FORCED: Use Absolute Relative Path for Puppeteer Cache
-    PUPPETEER_CACHE="$(pwd)/.puppeteer_cache"
-    export PUPPETEER_CACHE_DIR="$PUPPETEER_CACHE"
-    echo "Forcing Puppeteer Cache to: $PUPPETEER_CACHE_DIR"
-    mkdir -p "$PUPPETEER_CACHE_DIR"
-    chmod -R 777 "$PUPPETEER_CACHE_DIR"
+    # PERSISTENT Browser Strategy for Azure (outside ephemeral mounts)
+    BROWSER_BASE="/home/site/browser"
+    export PUPPETEER_EXECUTABLE_PATH="$BROWSER_BASE/chrome-linux64/chrome"
     
-    # Install with explicit path
-    echo "Checking for Chrome in project folder..."
-    if [ ! -d "$PUPPETEER_CACHE_DIR/chrome" ]; then
-        echo "Installing Chrome via Puppeteer (Local Project Path)..."
-        npx puppeteer browsers install chrome --path "$PUPPETEER_CACHE_DIR"
+    if [ ! -f "$PUPPETEER_EXECUTABLE_PATH" ]; then
+        echo "Persistent browser missing. Performing one-time high-reliability download..."
+        mkdir -p "$BROWSER_BASE"
+        cd "$BROWSER_BASE" || exit
+        
+        # Using a reliable stable Chrome for Testing binary (v122)
+        CHROME_URL="https://storage.googleapis.com/chrome-for-testing-public/122.0.6261.94/linux64/chrome-linux64.zip"
+        echo "Downloading Chrome from: $CHROME_URL"
+        curl -sL "$CHROME_URL" -o chrome.zip
+        
+        if [ -s chrome.zip ]; then
+            echo "Download successful. Extracting..."
+            if command -v unzip >/dev/null 2>&1; then
+                unzip -q chrome.zip
+            else
+                python3 -m zipfile -e chrome.zip .
+            fi
+            rm chrome.zip
+            chmod +x "$PUPPETEER_EXECUTABLE_PATH"
+            echo "Extraction complete."
+        else
+            echo "CRITICAL: Download failed (empty file). Reverting to npx install..."
+            npx puppeteer browsers install chrome --path "$(pwd)"
+        fi
+        cd "$SCRIPT_DIR" || exit
     fi
     
-    # discovery
-    echo "Searching for Chrome binary..."
-    ls -R "$PUPPETEER_CACHE_DIR" || echo "Cache directory empty or inaccessible."
-    CHROME_PATH=$(npx puppeteer browsers find chrome --path "$PUPPETEER_CACHE_DIR" | grep -i "executable path" | awk '{print $4}' | head -n 1)
-    
-    if [ -z "$CHROME_PATH" ]; then
-        echo "npx find failed. Searching manually in $PUPPETEER_CACHE_DIR..."
-        CHROME_PATH=$(find "$PUPPETEER_CACHE_DIR" -name "chrome" -type f -executable | head -n 1)
-    fi
-    
-    if [ -n "$CHROME_PATH" ]; then
-        export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
-        echo "Final Chrome Path set to: $PUPPETEER_EXECUTABLE_PATH"
-        chmod +x "$PUPPETEER_EXECUTABLE_PATH"
-    else
-        echo "WARNING: All Chrome discovery methods failed."
-    fi
+    echo "Final Chrome Path: $PUPPETEER_EXECUTABLE_PATH"
 fi
 
 echo "--- Starting Services ---"
 
-# Start the Flask app with standard sync worker for maximum stability on Azure
+# Start the Flask app with maximum stability (removed control socket completely)
 echo "Starting Flask on port 5000..."
-gunicorn --bind=127.0.0.1:5000 --timeout 600 --workers 1 --worker-class sync --worker-tmp-dir /dev/shm app:app &
+# Using sync worker and no control socket to stay within Azure permission limits
+gunicorn --bind=0.0.0.0:5000 --timeout 600 --workers 1 --worker-class sync --worker-tmp-dir /dev/shm --log-file - --error-log - app:app &
 
 # Start the WhatsApp Node server
 if [ -n "$PUPPETEER_EXECUTABLE_PATH" ] && [ -f "$PUPPETEER_EXECUTABLE_PATH" ]; then
-    echo "Starting WhatsApp Broadcast Service with Verified Chrome..."
+    echo "Starting WhatsApp Broadcast Service with Persistent Chrome..."
     node whatsapp_server.js
 else
-    echo "CRITICAL: No Chrome found. Final emergency install attempt..."
-    npx puppeteer browsers install chrome --path "$(pwd)/.puppeteer_cache"
-    CHROME_PATH=$(find "$(pwd)/.puppeteer_cache" -name "chrome" -type f -executable | head -n 1)
-    export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
+    echo "CRITICAL: Browser setup failed. Final emergency launch..."
     node whatsapp_server.js
 fi
