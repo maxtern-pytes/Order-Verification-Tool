@@ -56,41 +56,44 @@ if [ -f "package.json" ]; then
     echo "Installing Node.js dependencies..."
     npm install
     
-    # PERSISTENT Browser Strategy for Azure
-    export PUPPETEER_CACHE_DIR="/home/site/browser_cache"
-    echo "Using Persistent Browser Cache: $PUPPETEER_CACHE_DIR"
+    # FORCED: Use Absolute Relative Path for Puppeteer Cache
+    PUPPETEER_CACHE="$(pwd)/.puppeteer_cache"
+    export PUPPETEER_CACHE_DIR="$PUPPETEER_CACHE"
+    echo "Forcing Puppeteer Cache to: $PUPPETEER_CACHE_DIR"
     mkdir -p "$PUPPETEER_CACHE_DIR"
+    chmod -R 777 "$PUPPETEER_CACHE_DIR"
     
-    # Use npx for robust, verified installation
+    # Install with explicit path
+    echo "Checking for Chrome in project folder..."
     if [ ! -d "$PUPPETEER_CACHE_DIR/chrome" ]; then
-        echo "Installing Chrome via Puppeteer (Persistent)..."
-        npx puppeteer browsers install chrome
+        echo "Installing Chrome via Puppeteer (Local Project Path)..."
+        npx puppeteer browsers install chrome --path "$PUPPETEER_CACHE_DIR"
     fi
     
-    # Aggressive Discovery of the npx-installed path
-    echo "Searching for Chrome in $PUPPETEER_CACHE_DIR..."
-    export PUPPETEER_EXECUTABLE_PATH=$(npx puppeteer browsers find chrome | grep -i "executable path" | awk '{print $4}' | head -n 1)
+    # discovery
+    echo "Searching for Chrome binary..."
+    ls -R "$PUPPETEER_CACHE_DIR" || echo "Cache directory empty or inaccessible."
+    CHROME_PATH=$(npx puppeteer browsers find chrome --path "$PUPPETEER_CACHE_DIR" | grep -i "executable path" | awk '{print $4}' | head -n 1)
     
-    if [ -z "$PUPPETEER_EXECUTABLE_PATH" ]; then
-        echo "Warning: npx find failed. Performing manual fallback scan..."
-        export PUPPETEER_EXECUTABLE_PATH=$(find "$PUPPETEER_CACHE_DIR" -name "chrome" -type f -executable | head -n 1)
+    if [ -z "$CHROME_PATH" ]; then
+        echo "npx find failed. Searching manually in $PUPPETEER_CACHE_DIR..."
+        CHROME_PATH=$(find "$PUPPETEER_CACHE_DIR" -name "chrome" -type f -executable | head -n 1)
     fi
     
-    echo "Final Chrome Path: $PUPPETEER_EXECUTABLE_PATH"
-    
-    if [ -n "$PUPPETEER_EXECUTABLE_PATH" ]; then
+    if [ -n "$CHROME_PATH" ]; then
+        export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
+        echo "Final Chrome Path set to: $PUPPETEER_EXECUTABLE_PATH"
         chmod +x "$PUPPETEER_EXECUTABLE_PATH"
-        echo "Testing browser version..."
-        "$PUPPETEER_EXECUTABLE_PATH" --version || echo "Warning: Browser failed version check."
+    else
+        echo "WARNING: All Chrome discovery methods failed."
     fi
 fi
 
 echo "--- Starting Services ---"
 
-# Start the Flask app with optimizations for Azure environment
+# Start the Flask app with standard sync worker for maximum stability on Azure
 echo "Starting Flask on port 5000..."
-# --worker-tmp-dir /dev/shm prevents "Permission denied" errors on network storage
-gunicorn --bind=127.0.0.1:5000 --timeout 600 --workers 1 --threads 4 --worker-tmp-dir /dev/shm app:app &
+gunicorn --bind=127.0.0.1:5000 --timeout 600 --workers 1 --worker-class sync --worker-tmp-dir /dev/shm app:app &
 
 # Start the WhatsApp Node server
 if [ -n "$PUPPETEER_EXECUTABLE_PATH" ] && [ -f "$PUPPETEER_EXECUTABLE_PATH" ]; then
@@ -98,6 +101,8 @@ if [ -n "$PUPPETEER_EXECUTABLE_PATH" ] && [ -f "$PUPPETEER_EXECUTABLE_PATH" ]; t
     node whatsapp_server.js
 else
     echo "CRITICAL: No Chrome found. Final emergency install attempt..."
-    npx puppeteer browsers install chrome
+    npx puppeteer browsers install chrome --path "$(pwd)/.puppeteer_cache"
+    CHROME_PATH=$(find "$(pwd)/.puppeteer_cache" -name "chrome" -type f -executable | head -n 1)
+    export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
     node whatsapp_server.js
 fi

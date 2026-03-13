@@ -38,13 +38,20 @@ const pool = new Pool({
 });
 
 // WhatsApp Client Setup
+console.log('--- Environment Diagnostics ---');
+console.log('CWD:', process.cwd());
+console.log('PATH:', process.env.PATH);
+console.log('PUPPETEER_EXECUTABLE_PATH:', process.env.PUPPETEER_EXECUTABLE_PATH);
+console.log('------------------------------');
+
 const client = new Client({
     authStrategy: new LocalAuth({
-        dataPath: path.join(__dirname, '.wwebjs_auth')
+        clientId: 'whatsapp-session',
+        dataPath: './.wwebjs_auth'
     }),
     puppeteer: {
         headless: true,
-        // PRIORITY: Use the path found by start.sh
+        // PRIORITY: Use path from start.sh
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
         args: [
             '--no-sandbox',
