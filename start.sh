@@ -32,43 +32,56 @@ echo "=== Azure Multi-Service Bootloader ==="
 echo "Script Directory: $SCRIPT_DIR"
 echo "Current Directory: $(pwd)"
 echo "Current User: $(whoami)"
-echo "Current Directory: $(pwd)"
+
+# --- Process Cleanup ---
+echo "Cleaning up existing services..."
+pkill -f gunicorn || true
+pkill -f node || true
+sleep 2
+
+# --- Dependency Setup ---
 echo "Python Version: $(python --version)"
 echo "Node Version: $(node -v 2>/dev/null || echo 'Not Found')"
-echo "NPM Version: $(npm -v 2>/dev/null || echo 'Not Found')"
-echo "--- Starting Services ---"
 
 # Install Node.js dependencies
 if [ -f "package.json" ]; then
     echo "Installing Node.js dependencies..."
     npm install
     
-    # Detect Pre-bundled or Runtime Browser
+    # Detect/Install Puppeteer Browser
     export PUPPETEER_CACHE_DIR="$SCRIPT_DIR/.puppeteer_cache"
+    echo "Puppeteer Cache: $PUPPETEER_CACHE_DIR"
     
     if [ ! -d "$PUPPETEER_CACHE_DIR" ]; then
-        echo "Pre-bundled browser not found. Attempting runtime installation..."
+        echo "Installing Chrome browser..."
         npx puppeteer browsers install chrome
-    else
-        echo "Using pre-bundled Puppeteer browser..."
     fi
     
-    # Get the executable path automatically
-    export PUPPETEER_EXECUTABLE_PATH=$(npx puppeteer browsers find chrome | grep -i "executable path" | awk '{print $4}')
-    echo "Detected Chrome Path: $PUPPETEER_EXECUTABLE_PATH"
+    # Aggressive Discovery
+    echo "Searching for Chrome binary..."
+    CHROME_PATH=$(npx puppeteer browsers find chrome | grep -i "executable path" | awk '{print $4}' | head -n 1)
+    
+    if [ -z "$CHROME_PATH" ]; then
+         echo "Manual search for chrome..."
+         CHROME_PATH=$(find "$PUPPETEER_CACHE_DIR" -name "chrome" -type f -executable | head -n 1)
+    fi
+    
+    export PUPPETEER_EXECUTABLE_PATH="$CHROME_PATH"
+    echo "Final Chrome Path: $PUPPETEER_EXECUTABLE_PATH"
 fi
+
+echo "--- Starting Services ---"
 
 # Start the Flask app in the background on port 5000
 echo "Starting Flask on port 5000..."
-gunicorn --bind=127.0.0.1:5000 --timeout 600 app:app &
+gunicorn --bind=127.0.0.1:5000 --timeout 600 --workers 1 --threads 4 app:app &
 
 # Start the WhatsApp Node server as the main process (listens on $PORT)
-if command -v node >/dev/null 2>&1; then
+if [ -n "$PUPPETEER_EXECUTABLE_PATH" ]; then
     echo "Starting WhatsApp Broadcast Service on Azure Port $PORT..."
     node whatsapp_server.js
 else
-    echo "ERROR: Node.js not found. WhatsApp service will not start."
-    echo "Falling back to standalone Flask on port $PORT..."
-    # If Node is missing, run Flask directly on the Azure port so the app works at least
-    gunicorn --bind=0.0.0.0:$PORT --timeout 600 app:app
+    echo "ERROR: Chrome not found. Attempting emergency install..."
+    npx puppeteer browsers install chrome --install-deps
+    node whatsapp_server.js
 fi
