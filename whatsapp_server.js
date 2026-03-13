@@ -44,6 +44,8 @@ const client = new Client({
     }),
     puppeteer: {
         headless: true,
+        // NEW: Specific Azure/Linux pathing and stability flags
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -51,7 +53,8 @@ const client = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--disable-gpu'
+            '--disable-gpu',
+            '--single-process' // Better for resource-constrained environments
         ]
     }
 });

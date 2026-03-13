@@ -42,6 +42,15 @@ echo "--- Starting Services ---"
 if [ -f "package.json" ]; then
     echo "Installing Node.js dependencies..."
     npm install
+    
+    # NEW: Install Puppeteer Browser
+    echo "Installing Puppeteer browser dependencies..."
+    export PUPPETEER_CACHE_DIR="$SCRIPT_DIR/.puppeteer_cache"
+    npx puppeteer browsers install chrome
+    
+    # Get the executable path automatically
+    export PUPPETEER_EXECUTABLE_PATH=$(npx puppeteer browsers find chrome | grep -i "executable path" | awk '{print $4}')
+    echo "Detected Chrome Path: $PUPPETEER_EXECUTABLE_PATH"
 fi
 
 # Start the Flask app in the background on port 5000
